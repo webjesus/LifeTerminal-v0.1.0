@@ -51,18 +51,14 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
 }
 
 export function getAppearanceClassNames(settings: AppSettings['appearance']) {
-  const accentClass = `accent-${settings.accentColor}`
   const roundedClass = `rounded-${settings.roundedStyle}`
   const densityClass = settings.compactMode ? 'density-compact' : 'density-comfortable'
-  const themeClass = settings.theme === 'system' ? 'theme-system' : `theme-${settings.theme}`
 
   return [
     densityClass,
     settings.animations ? 'animations-enabled' : 'animations-disabled',
     settings.softShadows ? 'shadows-enabled' : 'shadows-disabled',
     settings.glassEffect ? 'glass-enabled' : 'glass-disabled',
-    themeClass,
-    accentClass,
     roundedClass,
   ].join(' ')
 }

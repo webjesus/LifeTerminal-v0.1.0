@@ -11,13 +11,13 @@ export function AppLayout() {
   const { settings } = useAppSettings()
 
   return (
-    <div className={cn('min-h-screen max-w-full overflow-x-clip bg-(--bg) text-(--text-secondary)', getAppearanceClassNames(settings.appearance), !settings.display.showPageDescriptions && 'page-descriptions-hidden')}>
-      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col md:flex-row">
+    <div className={cn('h-dvh overflow-hidden bg-(--bg) text-(--text-primary)', getAppearanceClassNames(settings.appearance), !settings.display.showPageDescriptions && 'page-descriptions-hidden')}>
+      <div className="grid h-dvh lg:grid-cols-[320px_1fr]">
         <Sidebar />
 
-        <div className="flex min-w-0 max-w-full flex-1 flex-col overflow-x-clip">
+        <div className="min-w-0 flex flex-col overflow-hidden">
           <Topbar />
-          <main className="ui-mobile-page flex-1">
+          <main className="ui-mobile-page flex-1 overflow-y-auto overflow-x-hidden">
             <Outlet />
           </main>
         </div>

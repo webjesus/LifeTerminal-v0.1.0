@@ -177,7 +177,7 @@ export function ProjectWorkspace({
               <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.16em] ${badge.className}`}>
                 {badge.shortLabel}
               </span>
-              <span className="ui-chip bg-white text-[11px] uppercase tracking-[0.16em]">
+              <span className="ui-chip text-[11px] uppercase tracking-[0.16em]">
                 {sectionTitle}
               </span>
             </div>

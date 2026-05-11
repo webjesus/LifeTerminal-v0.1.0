@@ -90,15 +90,15 @@ export function CalendarView({
               onClick={() => onSelectDate(date)}
               className={[
                 'min-h-16 rounded-2xl border p-2 text-left transition-all duration-200 sm:min-h-24 sm:p-3',
-                isSelected ? 'border-(--accent-border) bg-(--accent-soft)' : 'border-(--border-soft) bg-white hover:border-(--accent-border)',
+                isSelected ? 'border-(--accent-border) bg-(--accent-soft)' : 'border-(--border-soft) bg-(--panel-elevated) hover:border-(--accent-border)',
                 isToday ? 'ring-1 ring-(--accent)' : '',
                 !isCurrentMonth ? 'opacity-45' : '',
-                hasOverdue ? 'border-[#f3d2c7] bg-[#fff8f4]' : '',
+                hasOverdue ? 'border-(--danger-text) bg-(--danger-bg)' : '',
               ].join(' ')}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-(--text-primary)">{date.getDate()}</span>
-                {hasOverdue ? <span className="text-[10px] uppercase tracking-[0.16em] text-[#c35a3d]">over</span> : null}
+                {hasOverdue ? <span className="text-[10px] uppercase tracking-[0.16em] text-(--danger-text)">over</span> : null}
               </div>
 
               <div className="mt-3 space-y-2">

@@ -171,7 +171,7 @@ export function QuickAddInput({ compact, onCreated }: QuickAddInputProps) {
 
   return (
     <div className={isCompact ? 'space-y-3' : 'space-y-4'}>
-      <div className="max-w-full rounded-[26px] border border-(--border) bg-white p-3.5 shadow-[0_10px_24px_rgba(11,16,32,0.08)] sm:p-4">
+      <div className="max-w-full rounded-[26px] border border-(--border) bg-(--panel) p-3.5 shadow-[var(--shadow-panel)] sm:p-4">
         <div className="ui-filter-scroll -mx-1 px-1 md:mx-0 md:px-0">
           {(
             [

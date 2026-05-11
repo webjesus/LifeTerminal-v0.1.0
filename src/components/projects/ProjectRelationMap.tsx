@@ -210,7 +210,7 @@ export function ProjectRelationMap({
                       setSelectedNodeId(node.id)
                       onOpenNode({ id: node.id, type: node.type })
                     }}
-                    className="w-full rounded-2xl border border-(--border-soft) bg-white p-4 text-left shadow-[0_4px_12px_rgba(11,16,32,0.05)]"
+                    className="w-full rounded-2xl border border-(--border-soft) bg-(--panel) p-4 text-left shadow-[0_4px_12px_rgba(11,16,32,0.05)]"
                   >
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-[0.16em] ${node.badgeClassName}`}>

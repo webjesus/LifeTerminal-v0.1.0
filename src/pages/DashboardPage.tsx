@@ -598,7 +598,7 @@ export function DashboardPage() {
             ) : (
               <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {recentActivity.map((item) => (
-                  <Link key={`${item.section}-${item.id}`} to={item.route} className="min-w-0 rounded-2xl border border-(--border) bg-white px-4 py-3 text-sm transition-colors hover:border-(--accent)">
+                  <Link key={`${item.section}-${item.id}`} to={item.route} className="min-w-0 rounded-2xl border border-(--border) bg-(--panel) px-4 py-3 text-sm transition-colors hover:border-(--accent)">
                     <div className="flex min-w-0 items-center gap-2 text-(--text-muted)">
                       <SectionIcon section={item.section} size={16} />
                       <span className="text-xs uppercase tracking-[0.14em]">{item.subtitle}</span>

@@ -17,11 +17,11 @@ function ToggleRow({ title, description, checked, onChange }: { title: string; d
         onClick={() => onChange(!checked)}
         className={[
           'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-200',
-          checked ? 'border-(--accent) bg-(--accent)' : 'border-(--border) bg-white',
+          checked ? 'border-(--accent) bg-(--accent)' : 'border-(--border) bg-(--panel-elevated)',
         ].join(' ')}
       >
         <span className={[
-          'inline-flex h-6 w-6 rounded-full bg-white shadow-[0_2px_8px_rgba(11,16,32,0.12)] transition-transform duration-200',
+          'inline-flex h-6 w-6 rounded-full bg-(--input-bg) shadow-[0_2px_8px_rgba(11,16,32,0.12)] transition-transform duration-200',
           checked ? 'translate-x-[1.4rem]' : 'translate-x-1',
         ].join(' ')} />
       </button>
@@ -123,7 +123,7 @@ export function DisplaySettings() {
                 }}
                 className={[
                   'min-w-0 rounded-3xl border px-4 py-4 text-left transition-all duration-200',
-                  isActive ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)' : 'border-(--border-soft) bg-white text-(--text-secondary)',
+                  isActive ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)' : 'border-(--border-soft) bg-(--panel) text-(--text-secondary)',
                 ].join(' ')}
               >
                 <p className="text-sm font-semibold">{option.label}</p>

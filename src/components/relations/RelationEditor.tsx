@@ -62,7 +62,7 @@ export function RelationEditor({ selectedItems, availableItems, onChange, onOpen
       {dedupedSelectedItems.length > 0 ? (
         <div className="space-y-2">
           {dedupedSelectedItems.map((item) => (
-            <div key={createItemKey(item)} className="flex max-w-full flex-col gap-3 rounded-2xl border border-(--border-soft) bg-white px-3.5 py-3 shadow-[0_4px_12px_rgba(11,16,32,0.04)] sm:flex-row sm:items-center sm:justify-between">
+            <div key={createItemKey(item)} className="flex max-w-full flex-col gap-3 rounded-2xl border border-(--border-soft) bg-(--panel) px-3.5 py-3 shadow-[0_4px_12px_rgba(11,16,32,0.04)] sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="ui-chip text-[11px] uppercase tracking-[0.14em]">
@@ -99,7 +99,7 @@ export function RelationEditor({ selectedItems, availableItems, onChange, onOpen
       )}
 
       {!isReadonly ? (
-        <div className="rounded-3xl border border-(--border-soft) bg-white p-4">
+        <div className="rounded-3xl border border-(--border-soft) bg-(--panel) p-4">
           <p className="text-sm text-(--text-secondary)">Добавить связь</p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <select

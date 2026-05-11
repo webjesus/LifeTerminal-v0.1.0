@@ -37,23 +37,23 @@ export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-(--overlay) p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Закрыть модальное окно"
         onClick={onClose}
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-(--overlay) backdrop-blur-[2px]"
       />
 
       <div
         role="dialog"
         aria-modal="true"
         className={[
-          'relative flex w-full max-w-full flex-col overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-[0_-24px_40px_rgba(11,16,32,0.18)] max-h-[92dvh] sm:max-h-[90vh] sm:rounded-3xl sm:shadow-[0_24px_70px_rgba(11,16,32,0.2)]',
+          'relative flex w-full max-w-full flex-col overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-[var(--shadow-soft)] max-h-[92dvh] sm:max-h-[90vh] sm:rounded-3xl',
           sizeClasses[size],
         ].join(' ')}
       >
-        <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-slate-200 sm:hidden" />
+        <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-(--border) sm:hidden" />
         <div className="sticky top-0 z-20 flex items-start justify-between gap-4 border-b border-(--border) bg-(--panel-elevated) px-4 py-4 sm:px-5">
           <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Форма</p>
@@ -63,7 +63,7 @@ export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }:
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-white text-(--text-secondary) transition-all duration-200 hover:border-(--accent-border) hover:text-(--text-primary)"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-secondary) transition-all duration-200 hover:border-(--accent-border) hover:text-(--text-primary)"
           >
             <X size={18} strokeWidth={2} />
           </button>
