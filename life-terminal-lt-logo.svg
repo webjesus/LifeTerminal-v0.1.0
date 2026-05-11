@@ -1,0 +1,50 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Life Terminal LT logo</title>
+  <desc id="desc">Minimal adaptive LT monogram logo with smooth rounded lines and transparent background.</desc>
+  <style>
+    :root {
+      color: var(--accent, #6D35FF);
+    }
+    .mark {
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+
+  <!-- L mark -->
+  <path
+    class="mark"
+    d="M182 96
+       C164 145 154 192 142 238
+       C130 285 110 326 96 368
+       C88 392 103 413 129 413
+       C168 413 205 395 241 372"
+    stroke-width="58"
+  />
+
+  <!-- LT connecting sweep -->
+  <path
+    class="mark"
+    d="M184 298
+       C232 281 273 254 314 223
+       C343 201 369 184 404 170"
+    stroke-width="50"
+  />
+
+  <!-- T top -->
+  <path
+    class="mark"
+    d="M300 167
+       C341 157 384 158 425 166"
+    stroke-width="60"
+  />
+
+  <!-- T stem -->
+  <path
+    class="mark"
+    d="M356 210
+       C342 254 332 300 325 355"
+    stroke-width="58"
+  />
+</svg>
