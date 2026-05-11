@@ -1,4 +1,5 @@
 import { Bell, CalendarDays, Database, Monitor, SlidersHorizontal, UserRound, Workflow } from 'lucide-react'
+import { AccountSettings } from '../components/settings/AccountSettings'
 import { AppearanceSettings } from '../components/settings/AppearanceSettings'
 import { BehaviorSettings } from '../components/settings/BehaviorSettings'
 import { CalendarSettings } from '../components/settings/CalendarSettings'
@@ -11,6 +12,7 @@ import { useAppSettings } from '../settings/useAppSettings'
 export function SettingsPage() {
   const { settings } = useAppSettings()
   const sections = [
+    { id: 'account', label: 'Аккаунт', icon: UserRound },
     { id: 'profile', label: 'Профиль', icon: UserRound },
     { id: 'appearance', label: 'Внешний вид', icon: Monitor },
     { id: 'display', label: 'Отображение', icon: SlidersHorizontal },
@@ -48,6 +50,7 @@ export function SettingsPage() {
         </aside>
 
         <div className="min-w-0 space-y-4 md:space-y-6">
+          <AccountSettings />
           <ProfileSettings />
           <AppearanceSettings />
           <DisplaySettings />

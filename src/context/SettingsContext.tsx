@@ -1,4 +1,4 @@
-import { useMemo, useState, type PropsWithChildren } from 'react'
+import { useEffect, useMemo, useState, type PropsWithChildren } from 'react'
 import {
   getSettings,
   normalizeSettings,
@@ -6,11 +6,44 @@ import {
   resetSettings as resetStoredSettings,
   saveSettings,
 } from '../utils/settingsStorage'
+import { STORAGE_CHANGE_EVENT, storageKeys } from '../utils/storage'
 import type { AppSettings } from '../types/settings'
 import { SettingsContext, type SettingsContextValue } from './settingsContext'
 
 export function SettingsProvider({ children }: PropsWithChildren) {
   const [settingsState, setSettingsState] = useState<AppSettings>(() => getSettings())
+
+  useEffect(() => {
+    const syncSettings = () => {
+      setSettingsState(getSettings())
+    }
+
+    const handleNativeStorage = (event: StorageEvent) => {
+      if (event.key !== storageKeys.appSettings) {
+        return
+      }
+
+      syncSettings()
+    }
+
+    const handleCustomStorage = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string }>
+
+      if (customEvent.detail?.key !== storageKeys.appSettings) {
+        return
+      }
+
+      syncSettings()
+    }
+
+    window.addEventListener('storage', handleNativeStorage)
+    window.addEventListener(STORAGE_CHANGE_EVENT, handleCustomStorage)
+
+    return () => {
+      window.removeEventListener('storage', handleNativeStorage)
+      window.removeEventListener(STORAGE_CHANGE_EVENT, handleCustomStorage)
+    }
+  }, [])
 
   function setPersistedSettings(nextSettings: AppSettings | ((current: AppSettings) => AppSettings)) {
     setSettingsState((current) => {
