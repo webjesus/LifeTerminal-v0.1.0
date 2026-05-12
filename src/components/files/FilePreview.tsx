@@ -28,7 +28,7 @@ export function FilePreview({ file, compact = false }: FilePreviewProps) {
 
       <div className="mt-5 space-y-3">
         <p className="text-sm text-(--text-secondary)">{file.description || 'Описание не добавлено.'}</p>
-        {file.photoNote ? <p className="rounded-xl border border-(--border) bg-black/10 px-3 py-3 text-sm text-(--text-muted)">{file.photoNote}</p> : null}
+        {file.photoNote ? <p className="rounded-xl border border-(--border) bg-(--panel) px-3 py-3 text-sm text-(--text-muted)">{file.photoNote}</p> : null}
         <div className="rounded-xl border border-dashed border-(--border) px-3 py-3 text-sm text-(--text-muted)">
           {file.path || 'Путь к файлу не указан.'}
         </div>

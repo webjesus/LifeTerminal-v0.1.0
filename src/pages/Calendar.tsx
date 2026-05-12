@@ -161,6 +161,7 @@ export function CalendarPage() {
         id: crypto.randomUUID(),
         title: values.title,
         description: values.description,
+        tags: [],
         status: settings.behavior.defaultTaskStatus,
         priority: values.priority,
         deadline: toIsoNoon(values.date),

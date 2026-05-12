@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { type ReactNode, useEffect } from 'react'
+import { useLockBodyScroll } from '../hooks/useLockBodyScroll'
 
 type ModalProps = {
   title: string
@@ -17,6 +18,8 @@ const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
 }
 
 export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }: ModalProps) {
+  useLockBodyScroll(isOpen)
+
   useEffect(() => {
     if (!isOpen) {
       return
@@ -49,7 +52,7 @@ export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }:
         role="dialog"
         aria-modal="true"
         className={[
-          'relative flex w-full max-w-full flex-col overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-[var(--shadow-soft)] max-h-[92dvh] sm:max-h-[90vh] sm:rounded-3xl',
+          'relative flex w-full max-w-full flex-col overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-(--shadow-soft) max-h-[92dvh] sm:max-h-[90vh] sm:rounded-3xl',
           sizeClasses[size],
         ].join(' ')}
       >

@@ -34,8 +34,8 @@ export function CalendarDayPanel({
 
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         <button type="button" onClick={onAddTask} className="ui-button-accent px-3 py-2">Добавить задачу</button>
-        <button type="button" onClick={onAddReminder} className="min-h-11 rounded-2xl border border-[#d9e6ff] bg-[#eef5ff] px-3 py-2 text-sm font-medium text-[#4365c2] transition-all duration-200 active:scale-[0.98]">Добавить напоминание</button>
-        <button type="button" onClick={onAddEvent} className="min-h-11 rounded-2xl border border-[#e0d8ff] bg-[#f6f2ff] px-3 py-2 text-sm font-medium text-[#6a4fd4] transition-all duration-200 active:scale-[0.98]">Добавить событие</button>
+        <button type="button" onClick={onAddReminder} className="min-h-11 rounded-2xl border border-(--reminder-border) bg-(--reminder-bg) px-3 py-2 text-sm font-medium text-(--reminder-text) transition-all duration-200 active:scale-[0.98]">Добавить напоминание</button>
+        <button type="button" onClick={onAddEvent} className="min-h-11 rounded-2xl border border-(--event-border) bg-(--event-bg) px-3 py-2 text-sm font-medium text-(--event-text) transition-all duration-200 active:scale-[0.98]">Добавить событие</button>
       </div>
 
       <div className="mt-6 space-y-5">
@@ -53,7 +53,7 @@ export function CalendarDayPanel({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={() => onRescheduleTask(task)} className="ui-button px-3 py-2 text-xs">Перенести</button>
-                  <button type="button" onClick={() => onExtendDeadline(task)} className="rounded-2xl border border-[#f2dcc4] bg-[#fff4e8] px-3 py-2 text-xs font-medium text-[#b26a26] transition-all duration-200 active:scale-[0.98]">Продлить +1 день</button>
+                  <button type="button" onClick={() => onExtendDeadline(task)} className="rounded-2xl border border-(--warning-border) bg-(--warning-bg) px-3 py-2 text-xs font-medium text-(--warning-text) transition-all duration-200 active:scale-[0.98]">Продлить +1 день</button>
                 </div>
               </div>
             )) : <p className="ui-empty text-left">Нет задач на эту дату.</p>}
@@ -64,7 +64,7 @@ export function CalendarDayPanel({
           <h3 className="mb-3 text-sm font-medium uppercase tracking-[0.16em] text-(--text-muted)">Напоминания</h3>
           <div className="space-y-3">
             {reminders.length > 0 ? reminders.map((reminder) => (
-              <div key={reminder.id} className="ui-panel-elevated border-[#d9e6ff] bg-[#eef5ff] p-4">
+              <div key={reminder.id} className="ui-panel-elevated border-(--reminder-border) bg-(--reminder-bg) p-4">
                 <p className="font-medium text-(--text-primary)">{reminder.title}</p>
                 <p className="mt-1 text-sm text-(--text-muted)">{reminder.description || 'Без описания'}</p>
               </div>
@@ -76,7 +76,7 @@ export function CalendarDayPanel({
           <h3 className="mb-3 text-sm font-medium uppercase tracking-[0.16em] text-(--text-muted)">События проекта</h3>
           <div className="space-y-3">
             {projects.length > 0 ? projects.map((project) => (
-              <div key={project.id} className="ui-panel-elevated border-[#d7e8dc] bg-[#ebf7ef] p-4">
+              <div key={project.id} className="ui-panel-elevated border-(--project-border) bg-(--project-bg) p-4">
                 <p className="font-medium text-(--text-primary)">{project.title}</p>
                 <p className="mt-1 text-sm text-(--text-muted)">{project.description || 'Описание проекта не добавлено.'}</p>
               </div>
@@ -88,7 +88,7 @@ export function CalendarDayPanel({
           <h3 className="mb-3 text-sm font-medium uppercase tracking-[0.16em] text-(--text-muted)">Календарные события</h3>
           <div className="space-y-3">
             {events.length > 0 ? events.map((event) => (
-              <div key={event.id} className="ui-panel-elevated border-[#e0d8ff] bg-[#f6f2ff] p-4">
+              <div key={event.id} className="ui-panel-elevated border-(--event-border) bg-(--event-bg) p-4">
                 <p className="font-medium text-(--text-primary)">{event.title}</p>
                 <p className="mt-1 text-sm text-(--text-muted)">{event.description || 'Без описания'}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.16em] text-(--text-muted)">{event.type}</p>

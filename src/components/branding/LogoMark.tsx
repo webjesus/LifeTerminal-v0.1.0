@@ -19,11 +19,11 @@ export function LogoMark({
 
       {showText && (
         <div className={`leading-tight ${textClassName}`}>
-          <div className="text-sm font-semibold text-[var(--text-primary)]">
+          <div className="text-sm font-semibold text-(--text-primary)">
             Life Terminal
           </div>
 
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
+          <div className="text-xs font-medium text-(--text-secondary)">
             OS
           </div>
         </div>

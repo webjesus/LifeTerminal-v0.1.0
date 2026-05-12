@@ -5,9 +5,10 @@ import { FileCard } from '../components/files/FileCard'
 import { FileFormModal, type FileFormValues } from '../components/files/FileFormModal'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { FileItem, Goal, Idea, Note, Project, ProjectSection, Relation, Task } from '../types'
+import type { FileItem, Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task } from '../types'
 import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
+import { detachWorkspaceBlocksFromLinkedEntity, syncWorkspaceBlocksFromLinkedEntity } from '../utils/syncWorkspaceBlocks'
 
 type ModalMode = 'create' | 'edit' | null
 
@@ -112,6 +113,7 @@ export function FilesPage() {
   const navigate = useNavigate()
   const { settings } = useAppSettings()
   const { value: files, setValue: setFiles } = useLocalStorage<FileItem[]>(storageKeys.files, [])
+  const { value: projectWorkspaceBlocks, setValue: setProjectWorkspaceBlocks } = useLocalStorage<ProjectWorkspaceBlock[]>(storageKeys.projectWorkspaceBlocks, [])
   const { value: projects, setValue: setProjects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: tasks, setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { value: notes, setValue: setNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
@@ -188,6 +190,9 @@ export function FilesPage() {
     const nextProjects = syncProjectFileRefs(projects, nextFile.id, nextFile.projectId)
 
     persistFileRelations(nextFiles, nextTasks, nextNotes, nextProjects)
+    setProjectWorkspaceBlocks(
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'file', entity: nextFile, blocks: projectWorkspaceBlocks }),
+    )
     syncRelationsForItem(nextFile.id, 'file', values.relatedItems)
     closeModal()
   }
@@ -223,6 +228,7 @@ export function FilesPage() {
     const nextProjects = syncProjectFileRefs(projects, file.id, null)
 
     persistFileRelations(nextFiles, nextTasks, nextNotes, nextProjects)
+    setProjectWorkspaceBlocks(detachWorkspaceBlocksFromLinkedEntity(projectWorkspaceBlocks, 'file', file.id))
     deleteRelationsForItem(file.id)
 
     if (selectedFileId === file.id) {

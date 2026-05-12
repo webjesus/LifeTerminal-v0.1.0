@@ -1,4 +1,4 @@
-import type { ProjectSection, ProjectSectionKind, ProjectStatus } from '../../types'
+import type { GoalStatus, ProjectActivityType, ProjectMilestoneStatus, ProjectPriority, ProjectSection, ProjectSectionKind, ProjectStatus, ProjectWorkspaceRelationType } from '../../types'
 
 export const defaultProjectSectionTitles = [
   'Общее',
@@ -12,11 +12,67 @@ export const defaultProjectSectionTitles = [
 ] as const
 
 export const projectStatusLabels: Record<ProjectStatus, string> = {
+  planning: 'Планирование',
   active: 'Активный',
   paused: 'На паузе',
   completed: 'Завершён',
   archived: 'Архив',
 }
+
+export const projectPriorityLabels: Record<ProjectPriority, string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+}
+
+export const projectGoalStatusLabels: Record<GoalStatus, string> = {
+  planned: 'Запланирована',
+  in_progress: 'В работе',
+  completed: 'Выполнена',
+  archived: 'Архив',
+}
+
+export const projectMilestoneStatusLabels: Record<ProjectMilestoneStatus, string> = {
+  planned: 'Запланирован',
+  in_progress: 'В работе',
+  completed: 'Завершён',
+  paused: 'На паузе',
+}
+
+export const projectActivityTypeLabels: Record<ProjectActivityType, string> = {
+  project_created: 'Проект создан',
+  project_updated: 'Проект обновлён',
+  task_created: 'Создана задача',
+  task_completed: 'Задача завершена',
+  note_created: 'Создана заметка',
+  idea_created: 'Создана идея',
+  file_added: 'Добавлен материал',
+  goal_created: 'Создана цель',
+  goal_completed: 'Цель завершена',
+  milestone_created: 'Создан этап',
+  milestone_completed: 'Этап завершён',
+  workspace_block_created: 'Создан блок рабочей области',
+  workspace_block_updated: 'Обновлён блок рабочей области',
+  workspace_block_deleted: 'Удалён блок рабочей области',
+  workspace_block_moved: 'Перемещён блок рабочей области',
+  workspace_block_section_changed: 'Блок привязан к разделу',
+  relation_created: 'Создана связь',
+}
+
+export const projectWorkspaceRelationLabels: Record<ProjectWorkspaceRelationType, string> = {
+  related: 'Связано',
+  depends_on: 'Зависит от',
+  supports: 'Поддерживает',
+  blocks: 'Блокирует',
+  idea_to_task: 'Идея -> задача',
+  note_to_task: 'Заметка -> задача',
+  file_to_block: 'Файл -> блок',
+  goal_to_task: 'Цель -> задача',
+}
+
+export const projectWorkspaceRelationOptions = (
+  Object.entries(projectWorkspaceRelationLabels) as Array<[ProjectWorkspaceRelationType, string]>
+).map(([value, label]) => ({ value, label }))
 
 export type WorkspaceItemKind = Exclude<ProjectSectionKind, 'section'>
 
@@ -26,9 +82,11 @@ export const workspaceItemKindLabels: Record<WorkspaceItemKind, string> = {
   idea: 'Идея',
   goal: 'Цель',
   file: 'Файл',
-  photo: 'Фото',
   text: 'Текстовый блок',
   link: 'Ссылка',
+  problem: 'Проблема',
+  solution: 'Решение',
+  photo: 'Фото',
   thought: 'Мысль',
 }
 
@@ -71,6 +129,14 @@ export const workspaceItemKindBadges: Record<
     shortLabel: 'LINK',
     className: 'border-[#d7e5ff] bg-[#eef5ff] text-[#4365c2]',
   },
+  problem: {
+    shortLabel: 'PROBLEM',
+    className: 'border-[#f3d2c7] bg-[#fff0eb] text-[#c35a3d]',
+  },
+  solution: {
+    shortLabel: 'SOLUTION',
+    className: 'border-[#d7e8dc] bg-[#ebf7ef] text-[#37734f]',
+  },
   thought: {
     shortLabel: 'THOUGHT',
     className: 'border-[#e6dbff] bg-[#f6f2ff] text-[#6a4fd4]',
@@ -87,6 +153,7 @@ type CreateProjectSectionInput = {
   parentSectionId?: string | null
   entityId?: string | null
   relatedBlockIds?: string[]
+  tags?: string[]
   content?: string
   url?: string | null
 }
@@ -100,6 +167,7 @@ export function createProjectSection({
   parentSectionId = null,
   entityId = null,
   relatedBlockIds = [],
+  tags = [],
   content = '',
   url = null,
 }: CreateProjectSectionInput): ProjectSection {
@@ -115,6 +183,7 @@ export function createProjectSection({
     parentSectionId,
     entityId,
     relatedBlockIds,
+    tags,
     content,
     url,
     createdAt: timestamp,

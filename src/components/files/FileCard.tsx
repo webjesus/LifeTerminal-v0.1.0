@@ -38,7 +38,7 @@ export function FileCard({ file, relations, catalog, onOpenPath, onChangeLinks, 
         className="block w-full cursor-pointer select-none text-left p-5 outline-none"
       >
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex rounded-full border border-[#f2dcc4] bg-[#fff4e8] px-3 py-1 text-[11px] font-medium tracking-[0.16em] text-[#b26a26]">
+          <span className="inline-flex rounded-full border border-(--warning-border) bg-(--warning-bg) px-3 py-1 text-[11px] font-medium tracking-[0.16em] text-(--warning-text)">
             {fileTypeBadges[file.type]}
           </span>
           <span className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{fileTypeLabels[file.type]}</span>

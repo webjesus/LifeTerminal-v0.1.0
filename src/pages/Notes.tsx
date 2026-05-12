@@ -5,11 +5,14 @@ import { NoteCard } from '../components/notes/NoteCard'
 import { NoteFormModal, type NoteFormValues } from '../components/notes/NoteFormModal'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { FileItem, Goal, Idea, Note, Project, ProjectSection, Relation, Task } from '../types'
+import type { FileItem, Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task } from '../types'
+import { normalizeNote } from '../utils/normalizeEntities'
 import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
+import { detachWorkspaceBlocksFromLinkedEntity, syncWorkspaceBlocksFromLinkedEntity } from '../utils/syncWorkspaceBlocks'
+import { getAllTags } from '../utils/tags'
 
-type ModalMode = 'create' | 'edit' | 'view' | null
+type ModalMode = 'create' | 'edit' | null
 
 function buildNoteFromForm(values: NoteFormValues, existingNote?: Note): Note {
   const timestamp = new Date().toISOString()
@@ -17,8 +20,12 @@ function buildNoteFromForm(values: NoteFormValues, existingNote?: Note): Note {
   return {
     id: existingNote?.id ?? crypto.randomUUID(),
     title: values.title,
+    summary: values.summary,
     content: values.content,
+    type: values.type,
+    status: values.status,
     tags: values.tags,
+    category: values.category,
     createdAt: existingNote?.createdAt ?? timestamp,
     updatedAt: timestamp,
     projectId: values.projectId,
@@ -35,7 +42,15 @@ function matchesSearch(note: Note, query: string) {
   }
 
   const normalizedQuery = query.trim().toLowerCase()
-  const haystack = [note.title, note.content, ...note.tags].join(' ').toLowerCase()
+  const haystack = [
+    note.title,
+    note.summary,
+    note.content,
+    note.category,
+    note.type,
+    note.status,
+    ...note.tags,
+  ].join(' ').toLowerCase()
 
   return haystack.includes(normalizedQuery)
 }
@@ -44,17 +59,11 @@ function compareNotes(a: Note, b: Note) {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
 export function NotesPage() {
   const navigate = useNavigate()
   const { settings } = useAppSettings()
   const { value: notes, setValue: setNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
+  const { setValue: setProjectWorkspaceBlocks } = useLocalStorage<ProjectWorkspaceBlock[]>(storageKeys.projectWorkspaceBlocks, [])
   const { value: tasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { value: projects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: ideas } = useLocalStorage<Idea[]>(storageKeys.ideas, [])
@@ -66,14 +75,24 @@ export function NotesPage() {
   const [modalMode, setModalMode] = useState<ModalMode>(null)
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
 
+  const normalizedNotes = useMemo(
+    () => notes.map(normalizeNote),
+    [notes],
+  )
+
+  const allTags = useMemo(
+    () => getAllTags(normalizedNotes, tasks, ideas, projects, files, goals),
+    [files, goals, ideas, normalizedNotes, projects, tasks],
+  )
+
   const selectedNote = useMemo(
-    () => notes.find((note) => note.id === selectedNoteId) ?? null,
-    [notes, selectedNoteId],
+    () => normalizedNotes.find((note) => note.id === selectedNoteId) ?? null,
+    [normalizedNotes, selectedNoteId],
   )
 
   const filteredNotes = useMemo(
-    () => [...notes].sort(compareNotes).filter((note) => matchesSearch(note, searchQuery)),
-    [notes, searchQuery],
+    () => [...normalizedNotes].sort(compareNotes).filter((note) => matchesSearch(note, searchQuery)),
+    [normalizedNotes, searchQuery],
   )
 
   const relationCatalog = useMemo(
@@ -102,8 +121,7 @@ export function NotesPage() {
   }
 
   function openViewModal(note: Note) {
-    setSelectedNoteId(note.id)
-    setModalMode('view')
+    navigate(`/notes/${note.id}`)
   }
 
   function openEditModal(note: Note) {
@@ -123,10 +141,11 @@ export function NotesPage() {
       return
     }
 
-    setNotes((currentNotes) =>
-      currentNotes.map((note) =>
-        note.id === selectedNote.id ? buildNoteFromForm(values, note) : note,
-      ),
+    const nextNote = buildNoteFromForm(values, selectedNote)
+
+    setNotes((currentNotes) => currentNotes.map((note) => (note.id === selectedNote.id ? nextNote : note)))
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'note', entity: nextNote, blocks: currentBlocks }),
     )
     syncRelationsForItem(selectedNote.id, 'note', values.relatedItems)
     closeModal()
@@ -142,6 +161,7 @@ export function NotesPage() {
     }
 
     setNotes((currentNotes) => currentNotes.filter((item) => item.id !== note.id))
+  setProjectWorkspaceBlocks((currentBlocks) => detachWorkspaceBlocksFromLinkedEntity(currentBlocks, 'note', note.id))
     deleteRelationsForItem(note.id)
 
     if (selectedNoteId === note.id) {
@@ -149,10 +169,10 @@ export function NotesPage() {
     }
   }
 
-  const totalTags = useMemo(() => new Set(notes.flatMap((note) => note.tags)).size, [notes])
+  const totalTags = useMemo(() => new Set(normalizedNotes.flatMap((note) => note.tags)).size, [normalizedNotes])
   const notesWithLinks = useMemo(
-    () => notes.filter((note) => note.taskIds.length > 0 || note.ideaIds.length > 0 || note.projectId).length,
-    [notes],
+    () => normalizedNotes.filter((note) => note.taskIds.length > 0 || note.ideaIds.length > 0 || note.projectId).length,
+    [normalizedNotes],
   )
 
   return (
@@ -179,7 +199,7 @@ export function NotesPage() {
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="ui-stat-card">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Всего заметок</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{notes.length}</p>
+            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{normalizedNotes.length}</p>
           </div>
           <div className="ui-stat-card">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Уникальных тегов</p>
@@ -238,24 +258,13 @@ export function NotesPage() {
           tasks={tasks}
           projects={projects}
           ideas={ideas}
+          availableTags={allTags}
           relatedItems={selectedNoteRelations}
           availableRelationItems={availableRelationItems}
           onOpenRelatedItem={(item) => navigate(getLinkedItemPath(item))}
           onClose={closeModal}
           onSubmit={modalMode === 'create' ? handleCreateNote : handleUpdateNote}
         />
-      ) : null}
-
-      {selectedNote && modalMode === 'view' ? (
-        <div className="ui-panel p-5 text-sm text-(--text-muted)">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Последний просмотр</p>
-              <p className="mt-1 text-(--text-primary)">{selectedNote.title}</p>
-            </div>
-            <p>Создана {formatDateTime(selectedNote.createdAt)} · Обновлена {formatDateTime(selectedNote.updatedAt)}</p>
-          </div>
-        </div>
       ) : null}
     </section>
   )

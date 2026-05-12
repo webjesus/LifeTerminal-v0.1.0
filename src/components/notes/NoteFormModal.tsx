@@ -1,13 +1,18 @@
 import { useState, type FormEvent } from 'react'
 import { Modal } from '../Modal'
 import { LinkedItemsPanel } from '../linked/LinkedItemsPanel'
-import type { Idea, Note, Project, Task } from '../../types'
+import { TagInput } from '../tags/TagInput'
+import type { Idea, Note, NoteStatus, NoteType, Project, Task } from '../../types'
 import type { RelationSelectableItem } from '../../utils/relations'
 
 export type NoteFormValues = {
   title: string
+  summary: string
   content: string
+  type: NoteType
+  status: NoteStatus
   tags: string[]
+  category: string
   projectId: string | null
   taskIds: string[]
   ideaIds: string[]
@@ -22,6 +27,7 @@ type NoteFormModalProps = {
   tasks: Task[]
   projects: Project[]
   ideas: Idea[]
+  availableTags: string[]
   relatedItems: RelationSelectableItem[]
   availableRelationItems: RelationSelectableItem[]
   onOpenRelatedItem: (item: RelationSelectableItem) => void
@@ -31,36 +37,51 @@ type NoteFormModalProps = {
 
 type FormState = {
   title: string
+  summary: string
   content: string
-  tagsInput: string
+  type: NoteType
+  status: NoteStatus
+  tags: string[]
+  category: string
   projectId: string
   taskIds: string[]
   ideaIds: string[]
 }
 
+const noteTypeLabels: Record<NoteType, string> = {
+  basic: 'Обычная',
+  research: 'Исследование',
+  instruction: 'Инструкция',
+  project_material: 'Материал проекта',
+  personal_thought: 'Личная мысль',
+  solution: 'Решение',
+  list: 'Список',
+  reference: 'Справка',
+}
+
+const noteStatusLabels: Record<NoteStatus, string> = {
+  draft: 'Черновик',
+  active: 'В работе',
+  completed: 'Готово',
+  archived: 'Архив',
+}
+
 function getInitialState(note?: Note | null): FormState {
   return {
     title: note?.title ?? '',
+    summary: note?.summary ?? '',
     content: note?.content ?? '',
-    tagsInput: note?.tags.join(', ') ?? '',
+    type: note?.type ?? 'basic',
+    status: note?.status ?? 'draft',
+    tags: note?.tags ?? [],
+    category: note?.category ?? '',
     projectId: note?.projectId ?? '',
     taskIds: note?.taskIds ?? [],
     ideaIds: note?.ideaIds ?? [],
   }
 }
 
-function parseTags(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  )
-}
-
-export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems, availableRelationItems, onOpenRelatedItem, onClose, onSubmit }: NoteFormModalProps) {
+export function NoteFormModal({ mode, note, tasks, projects, ideas, availableTags, relatedItems, availableRelationItems, onOpenRelatedItem, onClose, onSubmit }: NoteFormModalProps) {
   const [formState, setFormState] = useState<FormState>(() => getInitialState(note))
   const [selectedRelatedItems, setSelectedRelatedItems] = useState<RelationSelectableItem[]>(relatedItems)
   const isReadonly = mode === 'view'
@@ -89,8 +110,12 @@ export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems
 
     onSubmit({
       title: formState.title.trim(),
+      summary: formState.summary.trim(),
       content: formState.content.trim(),
-      tags: parseTags(formState.tagsInput),
+      type: formState.type,
+      status: formState.status,
+      tags: formState.tags,
+      category: formState.category.trim(),
       projectId: formState.projectId || null,
       taskIds: formState.taskIds,
       ideaIds: formState.ideaIds,
@@ -147,6 +172,71 @@ export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems
 
           <div className="space-y-2">
             <label className="text-sm text-(--text-secondary)" htmlFor="note-content">
+              Краткое описание
+            </label>
+            <textarea
+              id="note-summary"
+              value={formState.summary}
+              onChange={(event) => handleChange('summary', event.target.value)}
+              disabled={isReadonly}
+              rows={2}
+              className="ui-input min-h-21 max-h-45 resize-y disabled:cursor-not-allowed disabled:opacity-80"
+              placeholder="О чём эта заметка и зачем она нужна"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-sm text-(--text-secondary)" htmlFor="note-type">
+                Тип заметки
+              </label>
+              <select
+                id="note-type"
+                value={formState.type}
+                onChange={(event) => handleChange('type', event.target.value as NoteType)}
+                disabled={isReadonly}
+                className="ui-input disabled:cursor-not-allowed disabled:opacity-80"
+              >
+                {Object.entries(noteTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-(--text-secondary)" htmlFor="note-status">
+                Статус
+              </label>
+              <select
+                id="note-status"
+                value={formState.status}
+                onChange={(event) => handleChange('status', event.target.value as NoteStatus)}
+                disabled={isReadonly}
+                className="ui-input disabled:cursor-not-allowed disabled:opacity-80"
+              >
+                {Object.entries(noteStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-(--text-secondary)" htmlFor="note-category">
+                Категория
+              </label>
+              <input
+                id="note-category"
+                value={formState.category}
+                onChange={(event) => handleChange('category', event.target.value)}
+                disabled={isReadonly}
+                className="ui-input disabled:cursor-not-allowed disabled:opacity-80"
+                placeholder="Например, Архитектура"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-(--text-secondary)" htmlFor="note-content">
               Основной текст
             </label>
             <textarea
@@ -155,24 +245,18 @@ export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems
               onChange={(event) => handleChange('content', event.target.value)}
               disabled={isReadonly}
               rows={5}
-              className="ui-input min-h-[120px] max-h-[240px] resize-y disabled:cursor-not-allowed disabled:opacity-80"
+              className="ui-input min-h-30 max-h-60 resize-y disabled:cursor-not-allowed disabled:opacity-80"
               placeholder="Запишите мысли, факты, выводы или структуру документа"
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm text-(--text-secondary)" htmlFor="note-tags">
-              Теги
-            </label>
-            <input
-              id="note-tags"
-              value={formState.tagsInput}
-              onChange={(event) => handleChange('tagsInput', event.target.value)}
-              disabled={isReadonly}
-              className="ui-input disabled:cursor-not-allowed disabled:opacity-80"
-              placeholder="research, system, idea"
-            />
-          </div>
+          <TagInput
+            label="Теги"
+            value={formState.tags}
+            suggestions={availableTags}
+            disabled={isReadonly}
+            onChange={(tags) => handleChange('tags', tags)}
+          />
 
           <div className="space-y-2">
             <label className="text-sm text-(--text-secondary)" htmlFor="note-project">
@@ -208,7 +292,7 @@ export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems
                         disabled={isReadonly}
                         className="mt-1"
                       />
-                      <span className="min-w-0 break-words">{task.title}</span>
+                      <span className="min-w-0 wrap-break-word">{task.title}</span>
                     </label>
                   ))
                 ) : (
@@ -230,7 +314,7 @@ export function NoteFormModal({ mode, note, tasks, projects, ideas, relatedItems
                         disabled={isReadonly}
                         className="mt-1"
                       />
-                      <span className="min-w-0 break-words">{idea.title}</span>
+                      <span className="min-w-0 wrap-break-word">{idea.title}</span>
                     </label>
                   ))
                 ) : (

@@ -126,8 +126,8 @@ export function buildRelationCatalog({
 }: RelationCatalogInput): RelationSelectableItem[] {
   return [
     ...tasks.map((task) => ({ id: task.id, type: 'task' as const, title: task.title, description: task.description })),
-    ...notes.map((note) => ({ id: note.id, type: 'note' as const, title: note.title, description: note.content })),
-    ...ideas.map((idea) => ({ id: idea.id, type: 'idea' as const, title: idea.title, description: idea.description })),
+    ...notes.map((note) => ({ id: note.id, type: 'note' as const, title: note.title, description: note.summary || note.content })),
+    ...ideas.map((idea) => ({ id: idea.id, type: 'idea' as const, title: idea.title, description: idea.problem || idea.description })),
     ...projects.map((project) => ({ id: project.id, type: 'project' as const, title: project.title, description: project.description })),
     ...files.map((file) => ({ id: file.id, type: 'file' as const, title: file.title, description: file.description || file.path, projectId: file.projectId })),
     ...goals.map((goal) => ({ id: goal.id, type: 'goal' as const, title: goal.title, description: goal.description, projectId: goal.projectId })),
@@ -239,9 +239,9 @@ export function getLinkedItemPath(item: Pick<RelationSelectableItem, 'type' | 'i
     case 'task':
       return '/tasks'
     case 'note':
-      return '/notes'
+      return `/notes/${item.id}`
     case 'idea':
-      return '/ideas'
+      return `/ideas/${item.id}`
     case 'file':
       return '/files'
     case 'goal':

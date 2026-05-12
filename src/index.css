@@ -28,12 +28,28 @@
   --text-muted: #667085;
   --success-bg: #ebf7ef;
   --success-text: #2f6b45;
+  --success-border: #d1e7dd;
   --warning-bg: #fff3e8;
   --warning-text: #b15a18;
+  --warning-border: #f2dcc4;
   --danger-bg: #fff0eb;
   --danger-text: #c14d2f;
+  --danger-border: #f3d2c7;
   --completed-bg: #eff4ef;
   --completed-text: #5c6c63;
+  --completed-border: #d7e8dc;
+    --reminder-bg: #eff6ff;
+    --reminder-text: #4365c2;
+    --reminder-border: #d9e6ff;
+    --event-bg: #f6f2ff;
+    --event-text: #6a4fd4;
+    --event-border: #e0d8ff;
+    --project-bg: #ebf7ef;
+    --project-text: #37734f;
+    --project-border: #d7e8dc;
+      --indicator-reminder: #5f8cff;
+      --indicator-event: #7c6cff;
+      --indicator-project: #49a86d;
 }
 
 .accent-violet {
@@ -135,23 +151,59 @@
   --input-text: #f4f7fb;
   --input-placeholder: #7f8aa3;
   --overlay: rgba(9, 12, 20, 0.48);
-  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.16);
-  --shadow-panel: 0 6px 18px rgba(0, 0, 0, 0.14);
-  --shadow-panel-elevated: 0 3px 10px rgba(0, 0, 0, 0.12);
-  --success-bg: #132a20;
-  --success-text: #93e1af;
-  --warning-bg: #2c2012;
-  --warning-text: #f3ba77;
-  --danger-bg: #311a1b;
-  --danger-text: #f5a29a;
-  --completed-bg: #202b25;
-  --completed-text: #b2c3b8;
+  --shadow-soft: 0 8px 20px rgba(0, 0, 0, 0.16);
+  --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-panel-elevated: 0 2px 6px rgba(0, 0, 0, 0.1);
+  --logo-glow: rgba(91, 77, 255, 0.08);
+  --success-bg: rgba(34, 197, 94, 0.12);
+  --success-text: #86efac;
+  --success-border: rgba(34, 197, 94, 0.25);
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-text: #fcd34d;
+  --warning-border: rgba(245, 158, 11, 0.25);
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --danger-text: #fca5a5;
+  --danger-border: rgba(239, 68, 68, 0.25);
+  --completed-bg: rgba(34, 197, 94, 0.12);
+  --completed-text: #86efac;
+  --completed-border: rgba(34, 197, 94, 0.25);
+    --reminder-bg: rgba(59, 130, 246, 0.12);
+    --reminder-text: #bfdbfe;
+    --reminder-border: rgba(59, 130, 246, 0.25);
+    --event-bg: rgba(168, 85, 247, 0.12);
+    --event-text: #d8b4fe;
+    --event-border: rgba(168, 85, 247, 0.25);
+    --project-bg: rgba(34, 197, 94, 0.12);
+    --project-text: #86efac;
+    --project-border: rgba(34, 197, 94, 0.25);
+      --indicator-reminder: #60a5fa;
+      --indicator-event: #a78bfa;
+      --indicator-project: #4ade80;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--border-soft) transparent;
+  scrollbar-width: thin;
 }
 
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-soft);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
 html,
 body,
 #root {
@@ -331,6 +383,10 @@ p {
 
   .ui-input {
     @apply min-h-11 w-full rounded-2xl border border-(--input-border) bg-(--input-bg) px-4 py-3 text-base text-(--input-text) placeholder:text-(--input-placeholder) outline-none transition-all duration-200 focus:border-(--accent) focus:shadow-[0_0_0_4px_var(--accent-soft)];
+  }
+
+  .ui-textarea {
+    @apply min-h-30 w-full rounded-2xl border border-(--input-border) bg-(--input-bg) px-4 py-3 text-base text-(--input-text) placeholder:text-(--input-placeholder) outline-none transition-all duration-200 resize-y focus:border-(--accent) focus:shadow-[0_0_0_4px_var(--accent-soft)];
   }
 
   .ui-button {

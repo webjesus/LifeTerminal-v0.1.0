@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Project } from '../../types'
-import { projectStatusLabels } from './projectMeta'
+import { projectPriorityLabels, projectStatusLabels } from './projectMeta'
 
 type ProjectCardProps = {
   project: Project
@@ -37,34 +37,26 @@ export function ProjectCard({ project, counts, completionRate, onEdit, onDelete 
             {project.title}
           </Link>
         </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onEdit(project)}
-            className="ui-button px-3 py-2 text-xs"
-          >
-            Редактировать
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(project)}
-            className="ui-button-danger px-3 py-2 text-xs"
-          >
-            Удалить
-          </button>
-        </div>
       </div>
 
       <p className="mt-4 line-clamp-3 min-h-18 text-sm text-(--text-muted) md:text-base">{project.description || 'Описание проекта пока не заполнено.'}</p>
+
+      <div className="mt-4 rounded-3xl border border-(--border) bg-(--panel-elevated) p-4">
+        <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Рабочая область проекта</p>
+        <p className="mt-2 text-sm text-(--text-secondary)">Задачи · Заметки · Идеи · Файлы · Связи</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="ui-chip">{projectStatusLabels[project.status]}</span>
+          <span className="ui-chip">Приоритет: {projectPriorityLabels[project.priority ?? 'medium']}</span>
+        </div>
+      </div>
 
       <div className="mt-5 rounded-3xl border border-(--border-soft) bg-(--panel-elevated) p-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Прогресс</p>
           <p className="text-sm font-medium text-(--text-primary)">{completionRate}%</p>
         </div>
-        <div className="mt-3 h-2.5 rounded-full bg-[#e9ecf6]">
-          <div className="h-full rounded-full bg-linear-to-r from-[#3927ff] to-[#5b4dff]" style={{ width: `${completionRate}%` }} />
+        <div className="mt-3 h-2.5 rounded-full bg-(--panel)">
+          <div className="h-full rounded-full bg-(--accent)" style={{ width: `${completionRate}%` }} />
         </div>
       </div>
 
@@ -96,6 +88,26 @@ export function ProjectCard({ project, counts, completionRate, onEdit, onDelete 
           <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Файлы</p>
           <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.files}</p>
         </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link to={`/projects/${project.id}`} className="ui-button-accent px-4 py-3 text-sm">
+          Открыть рабочую область
+        </Link>
+        <button
+          type="button"
+          onClick={() => onEdit(project)}
+          className="ui-button px-4 py-3 text-sm"
+        >
+          Редактировать
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(project)}
+          className="ui-button-danger px-4 py-3 text-sm"
+        >
+          Удалить
+        </button>
       </div>
     </article>
   )

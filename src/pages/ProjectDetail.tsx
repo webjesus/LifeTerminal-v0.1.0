@@ -1,34 +1,95 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/projects/EmptyState'
-import type { ProjectBlockEditorValues } from '../components/projects/ProjectBlockModal'
-import { ProjectFormModal, type ProjectFormValues } from '../components/projects/ProjectFormModal'
-import { ProjectRelationMap } from '../components/projects/ProjectRelationMap'
+import { ProjectAddElementSheet } from '../components/projects/ProjectAddElementSheet'
+import { ProjectAttachmentUploader, type ProjectAttachmentFormValues } from '../components/projects/ProjectAttachmentUploader'
+import { ProjectAddRelationSheet } from '../components/projects/ProjectAddRelationSheet'
+import { ProjectFilesTab } from '../components/projects/ProjectFilesTab'
+import { ProjectGoalsTab, type ProjectGoalFormValues } from '../components/projects/ProjectGoalsTab'
+import { ProjectHeader } from '../components/projects/ProjectHeader'
+import { ProjectIdeasTab } from '../components/projects/ProjectIdeasTab'
+import { ProjectInspector } from '../components/projects/ProjectInspector'
+import { ProjectMobileToolbar } from '../components/projects/ProjectMobileToolbar'
+import { ProjectNotesTab } from '../components/projects/ProjectNotesTab'
+import { ProjectOverviewTab } from '../components/projects/ProjectOverviewTab'
+import { ProjectRelationsTab } from '../components/projects/ProjectRelationsTab'
 import { ProjectSectionList } from '../components/projects/ProjectSectionList'
-import { createProjectSection, projectStatusLabels, type WorkspaceItemKind } from '../components/projects/projectMeta'
-import { ProjectWorkspace, type ProjectWorkspaceItemFormValues } from '../components/projects/ProjectWorkspace'
-import { LinkedItemsPanel } from '../components/linked/LinkedItemsPanel'
+import { ProjectSettingsTab, type ProjectSettingsValues } from '../components/projects/ProjectSettingsTab'
+import { ProjectTabs } from '../components/projects/ProjectTabs'
+import type { ProjectTab } from '../components/projects/ProjectTabs'
+import { ProjectActivityTab } from '../components/projects/ProjectActivityTab'
+import { ProjectTasksTab } from '../components/projects/ProjectTasksTab'
+import { ProjectToolbar } from '../components/projects/ProjectToolbar'
+import type { ProjectMilestoneFormValues } from '../components/projects/ProjectMilestonesPanel'
+import { createProjectSection } from '../components/projects/projectMeta'
+import { ProjectWorkspace } from '../components/projects/ProjectWorkspace'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { FileItem, FileItemType, Goal, Idea, Note, Project, ProjectSection, Relation, RelationEntityType, Task } from '../types'
-import type { LinkableRelationType, RelationSelectableItem } from '../utils/relations'
-import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
+import type {
+  FileItem,
+  Goal,
+  Idea,
+  Note,
+  Project,
+  ProjectActivity,
+  ProjectAttachment,
+  ProjectGoal,
+  ProjectMilestone,
+  ProjectSection,
+  ProjectWorkspaceBlock,
+  ProjectWorkspaceRelation,
+  Relation,
+  RelationEntityType,
+  Task,
+} from '../types'
+import {
+  normalizeGoal,
+  normalizeIdea,
+  normalizeNote,
+  normalizeProjectAttachment,
+  normalizeProjectActivity,
+  normalizeProjectGoal,
+  normalizeProjectMilestone,
+  normalizeProject,
+  normalizeProjectSection,
+  normalizeTask,
+  normalizeProjectWorkspaceBlock,
+  normalizeProjectWorkspaceRelation,
+} from '../utils/normalizeEntities'
+import type { RelationSelectableItem } from '../utils/relations'
+import {
+  buildRelationCatalog,
+  deleteRelationsForItem,
+  getLinkedItemPath,
+  getLinkedItemsFromRelations,
+  isEditableRelation,
+  syncRelationsForItem,
+} from '../utils/relations'
+import { calculateGoalProgress, calculateProjectProgress, getProjectStats } from '../utils/projectProgress'
 import { storageKeys } from '../utils/storage'
-
-type ProjectDetailTab = 'overview' | 'workspace' | 'tasks' | 'notes' | 'ideas' | 'files' | 'map'
-
-const detailTabs: Array<{ key: ProjectDetailTab; label: string }> = [
-  { key: 'overview', label: 'Обзор' },
-  { key: 'workspace', label: 'Рабочая область' },
-  { key: 'tasks', label: 'Задачи' },
-  { key: 'notes', label: 'Заметки' },
-  { key: 'ideas', label: 'Идеи' },
-  { key: 'files', label: 'Файлы' },
-  { key: 'map', label: 'Карта связей' },
-]
 
 function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids))
+}
+
+function resolveProjectTab(value: string | null | undefined): ProjectTab {
+  switch (value) {
+    case 'overview':
+    case 'workspace':
+    case 'goals':
+    case 'tasks':
+    case 'notes':
+    case 'ideas':
+    case 'files':
+    case 'relations':
+    case 'activity':
+    case 'settings':
+      return value
+    case 'map':
+      return 'relations'
+    default:
+      return 'overview'
+  }
 }
 
 function toDeadlineValue(value: string) {
@@ -37,34 +98,6 @@ function toDeadlineValue(value: string) {
   }
 
   return new Date(`${value}T12:00:00`).toISOString()
-}
-
-function buildProject(values: ProjectFormValues, existingProject: Project): Project {
-  return {
-    ...existingProject,
-    title: values.title,
-    description: values.description,
-    status: values.status,
-    goal: values.goal,
-    deadline: toDeadlineValue(values.deadline),
-    updatedAt: new Date().toISOString(),
-  }
-}
-
-function matchesProject(project: Project, itemProjectId: string | null, itemId: string, linkedIds: string[]) {
-  return itemProjectId === project.id || linkedIds.includes(itemId)
-}
-
-function getFileType(kind: WorkspaceItemKind): FileItemType {
-  switch (kind) {
-    case 'photo':
-      return 'image'
-    case 'link':
-      return 'link'
-    case 'file':
-    default:
-      return 'document'
-  }
 }
 
 function getNextOrder(items: ProjectSection[], projectId: string, parentSectionId: string | null, kind?: 'section' | 'block') {
@@ -105,163 +138,201 @@ function createDeterministicRelationId(projectId: string, sourceId: string, targ
   return `project:${projectId}:${label}:${[sourceId, targetId].sort().join(':')}`
 }
 
-function syncBlockRelations(
-  items: ProjectSection[],
-  projectId: string,
-  blockId: string,
-  nextRelatedBlockIds: string[],
-) {
-  const timestamp = new Date().toISOString()
-  const normalizedRelatedIds = uniqueIds(nextRelatedBlockIds.filter((id) => id !== blockId))
+function getSuggestedWorkspaceRelationType(
+  fromBlock: ProjectWorkspaceBlock,
+  toBlock: ProjectWorkspaceBlock,
+): ProjectWorkspaceRelation['type'] {
+  if (fromBlock.type === 'idea' && toBlock.type === 'task') {
+    return 'idea_to_task'
+  }
 
-  return items.map((item) => {
-    if (item.projectId !== projectId || item.kind === 'section') {
-      return item
-    }
+  if (fromBlock.type === 'note' && toBlock.type === 'task') {
+    return 'note_to_task'
+  }
 
-    if (item.id === blockId) {
-      return {
-        ...item,
-        relatedBlockIds: normalizedRelatedIds,
-        updatedAt: timestamp,
-      }
-    }
+  if (fromBlock.type === 'file') {
+    return 'file_to_block'
+  }
 
-    const shouldLink = normalizedRelatedIds.includes(item.id)
-    const hasLink = item.relatedBlockIds.includes(blockId)
+  if (fromBlock.type === 'goal' && toBlock.type === 'task') {
+    return 'goal_to_task'
+  }
 
-    if (shouldLink === hasLink) {
-      return item
-    }
-
-    return {
-      ...item,
-      relatedBlockIds: shouldLink
-        ? uniqueIds([...item.relatedBlockIds, blockId])
-        : item.relatedBlockIds.filter((id) => id !== blockId),
-      updatedAt: timestamp,
-    }
-  })
+  return 'related'
 }
 
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { settings } = useAppSettings()
   const { value: projects, setValue: setProjects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: sections, setValue: setSections } = useLocalStorage<ProjectSection[]>(storageKeys.projectSections, [])
+  const { value: projectWorkspaceBlocks, setValue: setProjectWorkspaceBlocks } = useLocalStorage<ProjectWorkspaceBlock[]>(storageKeys.projectWorkspaceBlocks, [])
+  const { value: projectWorkspaceRelations, setValue: setProjectWorkspaceRelations } = useLocalStorage<ProjectWorkspaceRelation[]>(storageKeys.projectWorkspaceRelations, [])
+  const { value: projectAttachments, setValue: setProjectAttachments } = useLocalStorage<ProjectAttachment[]>(storageKeys.projectAttachments, [])
   const { value: tasks, setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { value: notes, setValue: setNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
   const { value: ideas, setValue: setIdeas } = useLocalStorage<Idea[]>(storageKeys.ideas, [])
   const { value: files, setValue: setFiles } = useLocalStorage<FileItem[]>(storageKeys.files, [])
   const { value: goals, setValue: setGoals } = useLocalStorage<Goal[]>(storageKeys.goals, [])
+  const { value: projectGoals, setValue: setProjectGoals } = useLocalStorage<ProjectGoal[]>(storageKeys.projectGoals, [])
+  const { value: projectMilestones, setValue: setProjectMilestones } = useLocalStorage<ProjectMilestone[]>(storageKeys.projectMilestones, [])
+  const { value: projectActivities, setValue: setProjectActivities } = useLocalStorage<ProjectActivity[]>(storageKeys.projectActivities, [])
   const { value: relations, setValue: setRelations } = useLocalStorage<Relation[]>(storageKeys.relations, [])
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [workspaceSectionFilter, setWorkspaceSectionFilter] = useState<string>('all')
+  const [isAddElementSheetOpen, setIsAddElementSheetOpen] = useState(false)
+  const [isAddRelationSheetOpen, setIsAddRelationSheetOpen] = useState(false)
+  const [attachmentEditor, setAttachmentEditor] = useState<{
+    mode: 'image' | 'file' | 'link'
+    attachmentId?: string | null
+  } | null>(null)
+  const [isWorkspaceInspectorVisible, setIsWorkspaceInspectorVisible] = useState(true)
   const [selectedWorkspaceBlockId, setSelectedWorkspaceBlockId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<ProjectDetailTab>(settings.behavior.defaultProjectView)
+  const [selectedRelationId, setSelectedRelationId] = useState<string | null>(null)
+  const [relationSourceBlockId, setRelationSourceBlockId] = useState<string | null>(null)
+  const [relationDraft, setRelationDraft] = useState<{
+    fromBlockId: string
+    toBlockId: string
+    type: ProjectWorkspaceRelation['type']
+    label?: string
+  } | null>(null)
+  const [relationNotice, setRelationNotice] = useState<string | null>(null)
+  const [activeTool, setActiveTool] = useState<string>('select')
 
-  const project = useMemo(
-    () => projects.find((item) => item.id === projectId) ?? null,
-    [projectId, projects],
-  )
+  const activeTab = resolveProjectTab(searchParams.get('tab') ?? settings.behavior.defaultProjectView)
+  const normalizedProjects = useMemo(() => projects.map(normalizeProject), [projects])
+  const normalizedTasks = useMemo(() => tasks.map(normalizeTask), [tasks])
+  const normalizedNotes = useMemo(() => notes.map(normalizeNote), [notes])
+  const normalizedIdeas = useMemo(() => ideas.map(normalizeIdea), [ideas])
+  const normalizedGoals = useMemo(() => goals.map(normalizeGoal), [goals])
+  const normalizedProjectGoals = useMemo(() => projectGoals.map(normalizeProjectGoal), [projectGoals])
+  const normalizedProjectMilestones = useMemo(() => projectMilestones.map(normalizeProjectMilestone), [projectMilestones])
+  const normalizedProjectAttachments = useMemo(() => projectAttachments.map(normalizeProjectAttachment), [projectAttachments])
+  const normalizedProjectActivities = useMemo(() => projectActivities.map(normalizeProjectActivity), [projectActivities])
+  const normalizedSections = useMemo(() => sections.map(normalizeProjectSection), [sections])
+  const normalizedWorkspaceBlocks = useMemo(() => projectWorkspaceBlocks.map((block) => normalizeProjectWorkspaceBlock(block)), [projectWorkspaceBlocks])
+  const normalizedWorkspaceRelations = useMemo(() => projectWorkspaceRelations.map((relation) => normalizeProjectWorkspaceRelation(relation)), [projectWorkspaceRelations])
 
-  const projectSections = useMemo(
-    () => sections.filter((item) => item.projectId === projectId && item.kind === 'section').sort((a, b) => a.order - b.order),
-    [projectId, sections],
-  )
+  const project = useMemo(() => normalizedProjects.find((item) => item.id === projectId) ?? null, [normalizedProjects, projectId])
+  const projectSections = useMemo(() => normalizedSections.filter((item) => item.projectId === projectId && item.kind === 'section').sort((a, b) => a.order - b.order), [normalizedSections, projectId])
+  const projectSectionBlocks = useMemo(() => normalizedSections.filter((item) => item.projectId === projectId && item.kind !== 'section').sort((a, b) => a.order - b.order), [normalizedSections, projectId])
+  const workspaceBlocks = useMemo(() => normalizedWorkspaceBlocks.filter((item) => item.projectId === projectId).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [normalizedWorkspaceBlocks, projectId])
+  const workspaceRelationsForProject = useMemo(() => normalizedWorkspaceRelations.filter((relation) => relation.projectId === projectId), [normalizedWorkspaceRelations, projectId])
+  const projectGoalsForProject = useMemo(() => normalizedProjectGoals.filter((item) => item.projectId === projectId).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [normalizedProjectGoals, projectId])
+  const projectMilestonesForProject = useMemo(() => normalizedProjectMilestones.filter((item) => item.projectId === projectId).sort((a, b) => a.order - b.order), [normalizedProjectMilestones, projectId])
+  const projectAttachmentsForProject = useMemo(() => normalizedProjectAttachments.filter((item) => item.projectId === projectId).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [normalizedProjectAttachments, projectId])
+  const selectedWorkspaceBlock = useMemo(() => workspaceBlocks.find((item) => item.id === selectedWorkspaceBlockId) ?? null, [selectedWorkspaceBlockId, workspaceBlocks])
+  const selectedAttachment = useMemo(() => {
+    if (!selectedWorkspaceBlock?.linkedItemId || selectedWorkspaceBlock.linkedItemType !== 'file') {
+      return null
+    }
 
-  const workspaceBlocks = useMemo(
-    () => sections.filter((item) => item.projectId === projectId && item.kind !== 'section').sort((a, b) => a.order - b.order),
-    [projectId, sections],
-  )
+    return projectAttachmentsForProject.find((item) => item.id === selectedWorkspaceBlock.linkedItemId) ?? null
+  }, [projectAttachmentsForProject, selectedWorkspaceBlock])
+  const editedAttachment = useMemo(() => (attachmentEditor?.attachmentId ? projectAttachmentsForProject.find((item) => item.id === attachmentEditor.attachmentId) ?? null : null), [attachmentEditor?.attachmentId, projectAttachmentsForProject])
+  const selectedWorkspaceRelation = useMemo(() => workspaceRelationsForProject.find((relation) => relation.id === selectedRelationId) ?? null, [selectedRelationId, workspaceRelationsForProject])
+  const blockCounts = useMemo(() => Object.fromEntries(projectSections.map((section) => [section.id, projectSectionBlocks.filter((block) => block.parentSectionId === section.id).length])), [projectSectionBlocks, projectSections])
+  const projectSectionIds = useMemo(() => new Set(projectSections.map((section) => section.id)), [projectSections])
+  const linkedTasks = useMemo(() => (project ? normalizedTasks.filter((item) => item.projectId === project.id) : []), [normalizedTasks, project])
+  const linkedNotes = useMemo(() => (project ? normalizedNotes.filter((item) => item.projectId === project.id) : []), [normalizedNotes, project])
+  const linkedIdeas = useMemo(() => (project ? normalizedIdeas.filter((item) => item.projectId === project.id) : []), [normalizedIdeas, project])
+  const linkedFiles = useMemo(() => projectAttachmentsForProject, [projectAttachmentsForProject])
+  const linkedGoals = useMemo(() => (project ? normalizedGoals.filter((item) => item.projectId === project.id) : []), [normalizedGoals, project])
+  const relationGoals = useMemo<Goal[]>(() => [
+    ...linkedGoals,
+    ...projectGoalsForProject.map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      description: goal.description,
+      status: goal.status,
+      deadline: goal.deadline,
+      progress: goal.progress,
+      createdAt: goal.createdAt,
+      updatedAt: goal.updatedAt,
+      projectId: goal.projectId,
+      taskIds: goal.taskIds,
+      noteIds: goal.noteIds,
+      ideaIds: goal.ideaIds,
+    })),
+  ], [linkedGoals, projectGoalsForProject])
+  const projectActivityFeed = useMemo(() => (project ? normalizedProjectActivities.filter((item) => item.projectId === project.id) : []), [normalizedProjectActivities, project])
+  const editableRelations = useMemo(() => relations.filter(isEditableRelation), [relations])
+  const relationCatalog = useMemo(() => buildRelationCatalog({ tasks, projects, notes: normalizedNotes, ideas: normalizedIdeas, files, goals: normalizedGoals, sections: normalizedSections }), [files, normalizedGoals, normalizedIdeas, normalizedNotes, normalizedSections, projects, tasks])
+  const availableRelationItems = useMemo(() => relationCatalog.filter((item) => !(item.type === 'project' && item.id === project?.id)), [project?.id, relationCatalog])
+  const linkedEntityByBlock = useMemo(() => {
+    const taskMap = new Map(tasks.map((item) => [item.id, item]))
+    const noteMap = new Map(normalizedNotes.map((item) => [item.id, item]))
+    const ideaMap = new Map(normalizedIdeas.map((item) => [item.id, item]))
+    const fileMap = new Map(files.map((item) => [item.id, item]))
+    const projectAttachmentMap = new Map(projectAttachmentsForProject.map((item) => [item.id, item]))
+    const goalMap = new Map(normalizedGoals.map((item) => [item.id, item]))
+    const projectGoalMap = new Map(projectGoalsForProject.map((item) => [item.id, item]))
 
-  const blockCounts = useMemo(
-    () => Object.fromEntries(projectSections.map((section) => [section.id, workspaceBlocks.filter((block) => block.parentSectionId === section.id).length])),
-    [projectSections, workspaceBlocks],
-  )
+    if (!selectedWorkspaceBlock?.linkedItemType || !selectedWorkspaceBlock.linkedItemId) {
+      return null
+    }
 
-  const linkedTasks = useMemo(
-    () => (project ? tasks.filter((item) => matchesProject(project, item.projectId, item.id, project.taskIds)) : []),
-    [project, tasks],
-  )
+    const linkedType = selectedWorkspaceBlock.linkedItemType
+    const linkedId = selectedWorkspaceBlock.linkedItemId
 
-  const linkedNotes = useMemo(
-    () => (project ? notes.filter((item) => matchesProject(project, item.projectId, item.id, project.noteIds)) : []),
-    [notes, project],
-  )
+    switch (linkedType) {
+      case 'task': {
+        const linkedTask = taskMap.get(linkedId)
+        return linkedTask
+          ? { id: linkedTask.id, type: 'task' as const, title: linkedTask.title, exists: true, canOpen: true }
+          : { id: linkedId, type: 'task' as const, title: 'Связанная задача не найдена', exists: false, canOpen: true }
+      }
+      case 'note': {
+        const linkedNote = noteMap.get(linkedId)
+        return linkedNote
+          ? { id: linkedNote.id, type: 'note' as const, title: linkedNote.title, exists: true, canOpen: true }
+          : { id: linkedId, type: 'note' as const, title: 'Связанная заметка не найдена', exists: false, canOpen: true }
+      }
+      case 'idea': {
+        const linkedIdea = ideaMap.get(linkedId)
+        return linkedIdea
+          ? { id: linkedIdea.id, type: 'idea' as const, title: linkedIdea.title, exists: true, canOpen: true }
+          : { id: linkedId, type: 'idea' as const, title: 'Связанная идея не найдена', exists: false, canOpen: true }
+      }
+      case 'file': {
+        const linkedAttachment = projectAttachmentMap.get(linkedId)
 
-  const linkedIdeas = useMemo(
-    () => (project ? ideas.filter((item) => matchesProject(project, item.projectId, item.id, project.ideaIds)) : []),
-    [ideas, project],
-  )
-
-  const linkedFiles = useMemo(
-    () => (project ? files.filter((item) => matchesProject(project, item.projectId, item.id, project.fileIds)) : []),
-    [files, project],
-  )
-
-  const linkedGoals = useMemo(
-    () => (project ? goals.filter((item) => matchesProject(project, item.projectId, item.id, project.goalIds)) : []),
-    [goals, project],
-  )
-
-  const selectedWorkspaceBlock = useMemo(
-    () => workspaceBlocks.find((block) => block.id === selectedWorkspaceBlockId) ?? null,
-    [selectedWorkspaceBlockId, workspaceBlocks],
-  )
-
-  const editableRelations = useMemo(
-    () => relations.filter(isEditableRelation),
-    [relations],
-  )
-
-  const relationCatalog = useMemo(
-    () => buildRelationCatalog({ tasks, projects, notes, ideas, files, goals, sections }),
-    [files, goals, ideas, notes, projects, sections, tasks],
-  )
-
-  const availableRelationItems = useMemo(
-    () => relationCatalog.filter((item) => !(item.type === 'project' && item.id === project?.id)),
-    [project?.id, relationCatalog],
-  )
-
-  const selectedProjectRelations = useMemo(
-    () => (project ? getLinkedItemsFromRelations(project.id, editableRelations, relationCatalog) : []),
-    [editableRelations, project, relationCatalog],
-  )
-
-  const selectedBlockRelationType = selectedWorkspaceBlock ? getBlockRelationType(selectedWorkspaceBlock.kind) : null
-
-  const selectedBlockRelations = useMemo(
-    () =>
-      selectedWorkspaceBlock && selectedWorkspaceBlock.entityId && selectedBlockRelationType
-        ? getLinkedItemsFromRelations(selectedWorkspaceBlock.entityId, editableRelations, relationCatalog)
-        : [],
-    [editableRelations, relationCatalog, selectedBlockRelationType, selectedWorkspaceBlock],
-  )
-
-  const availableBlockRelationItems = useMemo(
-    () =>
-      relationCatalog.filter((item) => {
-        if (!selectedWorkspaceBlock || !selectedWorkspaceBlock.entityId || !selectedBlockRelationType) {
-          return true
+        if (linkedAttachment) {
+          return { id: linkedAttachment.id, type: 'file' as const, title: linkedAttachment.title, exists: true, canOpen: false }
         }
 
-        return !(item.id === selectedWorkspaceBlock.entityId && item.type === selectedBlockRelationType)
-      }),
-    [relationCatalog, selectedBlockRelationType, selectedWorkspaceBlock],
-  )
+        const linkedFile = fileMap.get(linkedId)
+        return linkedFile
+          ? { id: linkedFile.id, type: 'file' as const, title: linkedFile.title, exists: true, canOpen: true }
+          : { id: linkedId, type: 'file' as const, title: 'Связанный файл не найден', exists: false, canOpen: true }
+      }
+      case 'goal': {
+        const linkedProjectGoal = projectGoalMap.get(linkedId)
 
+        if (linkedProjectGoal) {
+          return { id: linkedProjectGoal.id, type: 'goal' as const, title: linkedProjectGoal.title, exists: true, canOpen: false }
+        }
+
+        const linkedGoal = goalMap.get(linkedId)
+        return linkedGoal
+          ? { id: linkedGoal.id, type: 'goal' as const, title: linkedGoal.title, exists: true, canOpen: true }
+          : { id: linkedId, type: 'goal' as const, title: 'Связанная цель не найдена', exists: false, canOpen: true }
+      }
+      default:
+        return null
+    }
+  }, [files, normalizedGoals, normalizedIdeas, normalizedNotes, projectAttachmentsForProject, projectGoalsForProject, selectedWorkspaceBlock, tasks])
   const projectRelations = useMemo<Relation[]>(() => {
     if (!project) {
       return []
     }
 
-    const blockById = new Map(workspaceBlocks.map((block) => [block.id, block]))
+    const blockById = new Map(projectSectionBlocks.map((block) => [block.id, block]))
     const nextRelations: Relation[] = []
 
-    workspaceBlocks.forEach((block) => {
+    projectSectionBlocks.forEach((block) => {
       const blockRelationType = getBlockRelationType(block.kind)
 
       if (block.parentSectionId && block.entityId && blockRelationType) {
@@ -285,7 +356,7 @@ export function ProjectDetailPage() {
       block.relatedBlockIds.forEach((relatedBlockId) => {
         const relatedBlock = blockById.get(relatedBlockId)
 
-        if (!relatedBlock || !relatedBlock.entityId) {
+        if (!relatedBlock?.entityId) {
           return
         }
 
@@ -314,14 +385,185 @@ export function ProjectDetailPage() {
     })
 
     return nextRelations
-  }, [project, workspaceBlocks])
-
-  const completedTasks = useMemo(
-    () => linkedTasks.filter((task) => task.status === 'completed').length,
-    [linkedTasks],
+  }, [project, projectSectionBlocks])
+  const completionRate = useMemo(() => calculateProjectProgress(projectId ?? '', linkedTasks, projectGoalsForProject, projectMilestonesForProject), [linkedTasks, projectGoalsForProject, projectId, projectMilestonesForProject])
+  const projectStats = useMemo(() => getProjectStats(projectId ?? '', {
+    tasks,
+    goals: projectGoals,
+    milestones: projectMilestones,
+    notesCount: linkedNotes.length,
+    ideas: linkedIdeas,
+    filesCount: linkedFiles.length,
+    workspaceBlocks,
+    activities: projectActivityFeed,
+  }), [linkedFiles.length, linkedIdeas, linkedNotes.length, projectActivityFeed, projectGoals, projectId, projectMilestones, tasks, workspaceBlocks])
+  const projectTagSuggestions = useMemo(
+    () => Array.from(new Set([
+      ...(project?.tags ?? []),
+      ...linkedTasks.flatMap((task) => task.tags),
+      ...linkedNotes.flatMap((note) => note.tags),
+      ...linkedIdeas.flatMap((idea) => idea.tags),
+      ...projectGoalsForProject.flatMap((goal) => goal.tags),
+      ...linkedFiles.flatMap((file) => file.tags),
+    ])).filter(Boolean),
+    [linkedFiles, linkedIdeas, linkedNotes, linkedTasks, project?.tags, projectGoalsForProject],
+  )
+  const projectTabCounts = useMemo(
+    () => ({
+      goals: projectGoalsForProject.length,
+      tasks: linkedTasks.length,
+      notes: linkedNotes.length,
+      ideas: linkedIdeas.length,
+      files: linkedFiles.length,
+      relations: workspaceRelationsForProject.length,
+      blocks: workspaceBlocks.length,
+      activity: projectActivityFeed.length,
+    }),
+    [linkedFiles.length, linkedIdeas.length, linkedNotes.length, linkedTasks.length, projectActivityFeed.length, projectGoalsForProject.length, workspaceBlocks.length, workspaceRelationsForProject.length],
   )
 
-  const completionRate = linkedTasks.length > 0 ? Math.round((completedTasks / linkedTasks.length) * 100) : 0
+  const selectedBlockRelations = useMemo(() => {
+    if (!selectedWorkspaceBlock) {
+      return { outgoing: [], incoming: [] }
+    }
+
+    const blockById = new Map(workspaceBlocks.map((block) => [block.id, block]))
+
+    return {
+      outgoing: workspaceRelationsForProject
+        .filter((relation) => relation.fromBlockId === selectedWorkspaceBlock.id)
+        .map((relation) => ({
+          relationId: relation.id,
+          type: relation.type,
+          label: relation.label,
+          relatedBlockId: relation.toBlockId,
+          relatedBlockTitle: blockById.get(relation.toBlockId)?.title ?? 'Блок удалён',
+        })),
+      incoming: workspaceRelationsForProject
+        .filter((relation) => relation.toBlockId === selectedWorkspaceBlock.id)
+        .map((relation) => ({
+          relationId: relation.id,
+          type: relation.type,
+          label: relation.label,
+          relatedBlockId: relation.fromBlockId,
+          relatedBlockTitle: blockById.get(relation.fromBlockId)?.title ?? 'Блок удалён',
+        })),
+    }
+  }, [selectedWorkspaceBlock, workspaceBlocks, workspaceRelationsForProject])
+
+  useEffect(() => {
+    if (!relationNotice) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => setRelationNotice(null), 2400)
+    return () => window.clearTimeout(timeoutId)
+  }, [relationNotice])
+
+  useEffect(() => {
+    if (selectedRelationId && !selectedWorkspaceRelation) {
+      setSelectedRelationId(null)
+    }
+  }, [selectedRelationId, selectedWorkspaceRelation])
+
+  useEffect(() => {
+    if (workspaceSectionFilter === 'all' || workspaceSectionFilter === 'none') {
+      return
+    }
+
+    if (!projectSectionIds.has(workspaceSectionFilter)) {
+      setWorkspaceSectionFilter('all')
+    }
+  }, [projectSectionIds, workspaceSectionFilter])
+
+  function appendProjectActivity(entry: ProjectActivity) {
+    setProjectActivities((current) => [entry, ...current])
+  }
+
+  useEffect(() => {
+    if (!project) {
+      return
+    }
+
+    const hasCreatedActivity = projectActivityFeed.some((activity) => activity.type === 'project_created')
+
+    if (hasCreatedActivity) {
+      return
+    }
+
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'project_created',
+      title: `Проект создан: ${project.title}`,
+      description: project.description,
+      relatedItemId: project.id,
+      relatedItemType: 'project',
+      createdAt: project.createdAt,
+    })
+  }, [project, projectActivityFeed])
+
+  useEffect(() => {
+    if (!project) {
+      return
+    }
+
+    const completedTaskIds = new Set(projectActivityFeed.filter((activity) => activity.type === 'task_completed' && activity.relatedItemId).map((activity) => activity.relatedItemId as string))
+    const completedGoalIds = new Set(projectActivityFeed.filter((activity) => activity.type === 'goal_completed' && activity.relatedItemId).map((activity) => activity.relatedItemId as string))
+    const completedMilestoneIds = new Set(projectActivityFeed.filter((activity) => activity.type === 'milestone_completed' && activity.relatedItemId).map((activity) => activity.relatedItemId as string))
+    const missingEntries: ProjectActivity[] = []
+
+    linkedTasks.forEach((task) => {
+      if (task.status === 'completed' && !completedTaskIds.has(task.id)) {
+        missingEntries.push({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'task_completed',
+          title: `Завершена задача: ${task.title}`,
+          description: task.description,
+          relatedItemId: task.id,
+          relatedItemType: 'task',
+          createdAt: task.completedAt ?? task.updatedAt,
+        })
+      }
+    })
+
+    projectGoalsForProject.forEach((goal) => {
+      if ((goal.status === 'completed' || calculateGoalProgress(goal, linkedTasks) >= 100) && !completedGoalIds.has(goal.id)) {
+        missingEntries.push({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'goal_completed',
+          title: `Цель завершена: ${goal.title}`,
+          description: goal.description,
+          relatedItemId: goal.id,
+          relatedItemType: 'goal',
+          createdAt: goal.updatedAt,
+        })
+      }
+    })
+
+    projectMilestonesForProject.forEach((milestone) => {
+      if (milestone.status === 'completed' && !completedMilestoneIds.has(milestone.id)) {
+        missingEntries.push({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'milestone_completed',
+          title: `Этап завершён: ${milestone.title}`,
+          description: milestone.description,
+          relatedItemId: milestone.id,
+          relatedItemType: 'milestone',
+          createdAt: milestone.updatedAt,
+        })
+      }
+    })
+
+    if (missingEntries.length === 0) {
+      return
+    }
+
+    setProjectActivities((current) => [...missingEntries, ...current])
+  }, [linkedTasks, project, projectActivityFeed, projectGoalsForProject, projectMilestonesForProject])
 
   useEffect(() => {
     if (!project) {
@@ -329,9 +571,7 @@ export function ProjectDetailPage() {
     }
 
     const projectRelationPrefix = `project:${project.id}:`
-    const currentProjectRelations = relations
-      .filter((relation) => relation.id.startsWith(projectRelationPrefix))
-      .sort((a, b) => a.id.localeCompare(b.id))
+    const currentProjectRelations = relations.filter((relation) => relation.id.startsWith(projectRelationPrefix)).sort((a, b) => a.id.localeCompare(b.id))
     const nextProjectRelations = [...projectRelations].sort((a, b) => a.id.localeCompare(b.id))
 
     if (JSON.stringify(currentProjectRelations) === JSON.stringify(nextProjectRelations)) {
@@ -350,13 +590,12 @@ export function ProjectDetailPage() {
       return
     }
 
-    const matchingBlock = workspaceBlocks.find((block) => {
+    const matchingBlock = projectSectionBlocks.find((block) => {
       if (!block.entityId || block.entityId !== node.id) {
         return false
       }
 
-      const blockRelationType = getBlockRelationType(block.kind)
-      return blockRelationType === node.type
+      return getBlockRelationType(block.kind) === node.type
     })
 
     if (matchingBlock) {
@@ -411,16 +650,1308 @@ export function ProjectDetailPage() {
     )
   }
 
-  function handleUpdateProject(values: ProjectFormValues) {
+  function handleChangeTab(tab: ProjectTab) {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams)
+      nextParams.set('tab', tab)
+      return nextParams
+    }, { replace: true })
+  }
+
+  function handleSaveProjectSettings(values: ProjectSettingsValues) {
     if (!project) {
       return
     }
 
     setProjects((currentProjects) =>
-      currentProjects.map((item) => (item.id === project.id ? buildProject(values, item) : item)),
+      currentProjects.map((item) =>
+        item.id === project.id
+          ? {
+              ...item,
+              title: values.title,
+              description: values.description,
+              details: values.details,
+              goal: values.goal,
+              status: values.status,
+              priority: values.priority,
+              deadline: toDeadlineValue(values.deadline),
+              tags: values.tags,
+              color: values.color,
+              icon: values.icon,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
     )
-    syncRelationsForItem(project.id, 'project', values.relatedItems)
-    setIsEditModalOpen(false)
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'project_updated',
+      title: `Обновлены настройки проекта: ${values.title}`,
+      description: values.goal,
+      relatedItemId: project.id,
+      relatedItemType: 'project',
+      createdAt: new Date().toISOString(),
+    })
+  }
+
+  function handleDeleteProject() {
+    if (!project) {
+      return
+    }
+
+    const shouldDelete = settings.behavior.askBeforeDelete
+      ? window.confirm(`Удалить проект «${project.title}»? Рабочая поверхность будет очищена, а связанные элементы отвяжутся от проекта.`)
+      : true
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setProjects((currentProjects) => currentProjects.filter((item) => item.id !== project.id))
+    setSections((currentSections) => currentSections.filter((item) => item.projectId !== project.id))
+    setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.filter((block) => block.projectId !== project.id))
+    setProjectWorkspaceRelations((currentRelations) => currentRelations.filter((relation) => relation.projectId !== project.id))
+    setProjectAttachments((currentAttachments) => currentAttachments.filter((item) => item.projectId !== project.id))
+    setProjectGoals((currentProjectGoals) => currentProjectGoals.filter((item) => item.projectId !== project.id))
+    setProjectMilestones((currentProjectMilestones) => currentProjectMilestones.filter((item) => item.projectId !== project.id))
+    setProjectActivities((currentActivities) => currentActivities.filter((item) => item.projectId !== project.id))
+    setTasks((currentTasks) => currentTasks.map((item) => (item.projectId === project.id ? { ...item, projectId: null, updatedAt: new Date().toISOString() } : item)))
+    setNotes((currentNotes) => currentNotes.map((item) => (item.projectId === project.id ? { ...item, projectId: null, updatedAt: new Date().toISOString() } : item)))
+    setIdeas((currentIdeas) => currentIdeas.map((item) => (item.projectId === project.id ? { ...item, projectId: null, updatedAt: new Date().toISOString() } : item)))
+    setFiles((currentFiles) => currentFiles.map((item) => (item.projectId === project.id ? { ...item, projectId: null, updatedAt: new Date().toISOString() } : item)))
+    setGoals((currentGoals) => currentGoals.map((item) => (item.projectId === project.id ? { ...item, projectId: null, updatedAt: new Date().toISOString() } : item)))
+    deleteRelationsForItem(project.id)
+    projectSections.forEach((section) => deleteRelationsForItem(section.id))
+    navigate('/projects')
+  }
+
+  const workspaceBlockTitles: Record<ProjectWorkspaceBlock['type'], string> = {
+    text: 'Новый текстовый блок',
+    task: 'Новая задача',
+    note: 'Новая заметка',
+    idea: 'Новая идея',
+    goal: 'Новая цель',
+    file: 'Новый файл',
+    image: 'Новое изображение',
+    link: 'Новая ссылка',
+    comment: 'Комментарий',
+    drawing: 'Схема / рисунок',
+  }
+
+  function openAttachmentUploader(mode: 'image' | 'file' | 'link', attachmentId?: string | null) {
+    setAttachmentEditor({ mode, attachmentId: attachmentId ?? null })
+  }
+
+  function resolveAttachmentMode(attachment: ProjectAttachment): 'image' | 'file' | 'link' {
+    if (attachment.type === 'image' || attachment.type === 'link') {
+      return attachment.type
+    }
+
+    return 'file'
+  }
+
+  function closeAttachmentUploader() {
+    setAttachmentEditor(null)
+  }
+
+  function buildWorkspaceBlockFromAttachment(attachment: ProjectAttachment, existingBlock?: ProjectWorkspaceBlock | null): ProjectWorkspaceBlock {
+    const timestamp = new Date().toISOString()
+
+    return {
+      id: existingBlock?.id ?? crypto.randomUUID(),
+      projectId: attachment.projectId ?? project?.id ?? '',
+      type: attachment.type === 'image' ? 'image' : attachment.type === 'link' ? 'link' : 'file',
+      title: attachment.title,
+      content: attachment.description,
+      description: attachment.description,
+      sectionId: existingBlock?.sectionId ?? null,
+      tags: attachment.tags,
+      linkedItemId: attachment.id,
+      linkedItemType: 'file',
+      fileUrl: attachment.url ?? attachment.path,
+      previewUrl: attachment.previewUrl ?? undefined,
+      dataUrl: attachment.dataUrl ?? undefined,
+      fileName: attachment.fileName ?? undefined,
+      fileType: attachment.fileType ?? undefined,
+      fileSize: attachment.fileSize,
+      imageUrl: attachment.type === 'image' ? (attachment.dataUrl ?? attachment.previewUrl ?? undefined) : undefined,
+      externalUrl: attachment.externalUrl ?? undefined,
+      createdAt: existingBlock?.createdAt ?? timestamp,
+      updatedAt: attachment.updatedAt,
+      x: existingBlock?.x,
+      y: existingBlock?.y,
+      width: existingBlock?.width,
+      height: existingBlock?.height,
+      color: existingBlock?.color,
+      icon: existingBlock?.icon,
+    }
+  }
+
+  function handleCreateAttachment(values: ProjectAttachmentFormValues) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const attachmentId = crypto.randomUUID()
+    const blockId = crypto.randomUUID()
+    const nextAttachment: ProjectAttachment = {
+      id: attachmentId,
+      projectId: project.id,
+      title: values.title,
+      description: values.description,
+      type: values.type,
+      path: values.fileName ?? values.url ?? values.externalUrl ?? '',
+      previewUrl: values.previewUrl ?? null,
+      dataUrl: values.dataUrl,
+      url: values.url,
+      externalUrl: values.externalUrl,
+      fileName: values.fileName,
+      fileType: values.fileType,
+      fileSize: values.fileSize,
+      tags: values.tags,
+      linkedBlockId: blockId,
+      uploadStatus: 'local',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      taskId: null,
+      noteId: null,
+      ideaId: null,
+    }
+
+    const nextBlock = buildWorkspaceBlockFromAttachment(nextAttachment, {
+      id: blockId,
+      projectId: project.id,
+      type: nextAttachment.type === 'image' ? 'image' : nextAttachment.type === 'link' ? 'link' : 'file',
+      title: nextAttachment.title,
+      description: nextAttachment.description,
+      content: nextAttachment.description,
+      sectionId: workspaceSectionFilter !== 'all' && workspaceSectionFilter !== 'none' ? workspaceSectionFilter : null,
+      tags: nextAttachment.tags,
+      linkedItemId: nextAttachment.id,
+      linkedItemType: 'file',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+
+    setProjectAttachments((currentAttachments) => [nextAttachment, ...currentAttachments])
+    setProjectWorkspaceBlocks((currentBlocks) => [nextBlock, ...currentBlocks])
+    setSelectedWorkspaceBlockId(nextBlock.id)
+    setIsWorkspaceInspectorVisible(true)
+    setProjectActivities((current) => [
+      {
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        type: 'file_added',
+        title: `Добавлен материал: ${nextAttachment.title}`,
+        description: values.type,
+        relatedItemId: nextAttachment.id,
+        relatedItemType: 'file',
+        createdAt: timestamp,
+      },
+      ...current,
+    ])
+  }
+
+  function handleUpdateAttachment(attachmentId: string, values: ProjectAttachmentFormValues) {
+    const currentAttachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+    if (!currentAttachment) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const nextAttachment: ProjectAttachment = {
+      ...currentAttachment,
+      title: values.title,
+      description: values.description,
+      type: values.type,
+      path: values.fileName ?? values.url ?? values.externalUrl ?? currentAttachment.path,
+      previewUrl: values.previewUrl ?? currentAttachment.previewUrl,
+      dataUrl: values.dataUrl ?? currentAttachment.dataUrl,
+      url: values.url ?? currentAttachment.url,
+      externalUrl: values.externalUrl ?? undefined,
+      fileName: values.fileName ?? currentAttachment.fileName,
+      fileType: values.fileType ?? currentAttachment.fileType,
+      fileSize: values.fileSize ?? currentAttachment.fileSize,
+      tags: values.tags,
+      updatedAt: timestamp,
+    }
+
+    setProjectAttachments((currentAttachments) => currentAttachments.map((item) => (item.id === attachmentId ? nextAttachment : item)))
+    setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.map((block) => block.linkedItemType === 'file' && block.linkedItemId === attachmentId ? buildWorkspaceBlockFromAttachment(nextAttachment, block) : block))
+  }
+
+  function handleDeleteAttachment(attachmentId: string) {
+    const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+    if (!attachment) {
+      return
+    }
+
+    const linkedBlock = workspaceBlocks.find((block) => block.linkedItemType === 'file' && block.linkedItemId === attachment.id)
+    const shouldDelete = settings.behavior.askBeforeDelete
+      ? window.confirm(linkedBlock ? `Материал «${attachment.title}» связан с workspace-блоком. Удалить материал и связанный блок?` : `Удалить материал «${attachment.title}»?`)
+      : true
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setProjectAttachments((currentAttachments) => currentAttachments.filter((item) => item.id !== attachmentId))
+
+    if (linkedBlock) {
+      setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.filter((block) => block.id !== linkedBlock.id))
+      setProjectWorkspaceRelations((currentRelations) => currentRelations.filter((relation) => relation.fromBlockId !== linkedBlock.id && relation.toBlockId !== linkedBlock.id))
+
+      if (selectedWorkspaceBlockId === linkedBlock.id) {
+        setSelectedWorkspaceBlockId(null)
+      }
+    }
+  }
+
+  function handleOpenAttachment(attachmentId: string) {
+    const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+    if (!attachment) {
+      return
+    }
+
+    if (attachment.type === 'link' && attachment.externalUrl) {
+      window.open(attachment.externalUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    if (attachment.type === 'image' && (attachment.dataUrl || attachment.previewUrl)) {
+      window.open(attachment.dataUrl || attachment.previewUrl || '', '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    window.alert('Для обычных файлов пока сохраняются только метаданные. Позже будет добавлено облачное хранилище.')
+  }
+
+  function buildWorkspaceBlockFromProjectGoal(goal: ProjectGoal, existingBlock?: ProjectWorkspaceBlock | null): ProjectWorkspaceBlock {
+    const timestamp = new Date().toISOString()
+
+    return {
+      id: existingBlock?.id ?? crypto.randomUUID(),
+      projectId: goal.projectId,
+      type: 'goal',
+      title: goal.title,
+      content: goal.description,
+      description: goal.description,
+      sectionId: existingBlock?.sectionId ?? (workspaceSectionFilter !== 'all' && workspaceSectionFilter !== 'none' ? workspaceSectionFilter : null),
+      tags: goal.tags,
+      linkedItemId: goal.id,
+      linkedItemType: 'goal',
+      createdAt: existingBlock?.createdAt ?? timestamp,
+      updatedAt: goal.updatedAt,
+      x: existingBlock?.x,
+      y: existingBlock?.y,
+      width: existingBlock?.width,
+      height: existingBlock?.height,
+      color: existingBlock?.color,
+      icon: existingBlock?.icon,
+    }
+  }
+
+  function handleCreateProjectGoal(values: ProjectGoalFormValues) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const goalId = crypto.randomUUID()
+    const nextGoal: ProjectGoal = {
+      id: goalId,
+      projectId: project.id,
+      title: values.title.trim(),
+      description: values.description.trim(),
+      status: values.status,
+      priority: values.priority,
+      progress: values.progress,
+      deadline: values.deadline ? toDeadlineValue(values.deadline) : null,
+      taskIds: values.taskIds,
+      noteIds: values.noteIds,
+      ideaIds: values.ideaIds,
+      fileIds: values.fileIds,
+      tags: values.tags,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    const nextBlock = buildWorkspaceBlockFromProjectGoal(nextGoal)
+
+    setProjectGoals((currentGoals) => [nextGoal, ...currentGoals])
+    setProjectWorkspaceBlocks((currentBlocks) => [nextBlock, ...currentBlocks])
+    setSelectedWorkspaceBlockId(nextBlock.id)
+    setIsWorkspaceInspectorVisible(true)
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'goal_created',
+      title: `Создана цель: ${nextGoal.title}`,
+      description: nextGoal.description,
+      relatedItemId: nextGoal.id,
+      relatedItemType: 'goal',
+      createdAt: timestamp,
+    })
+  }
+
+  function handleUpdateProjectGoal(goalId: string, values: ProjectGoalFormValues) {
+    const currentGoal = projectGoalsForProject.find((goal) => goal.id === goalId)
+
+    if (!currentGoal) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const nextGoal: ProjectGoal = {
+      ...currentGoal,
+      title: values.title.trim(),
+      description: values.description.trim(),
+      status: values.status,
+      priority: values.priority,
+      progress: values.progress,
+      deadline: values.deadline ? toDeadlineValue(values.deadline) : null,
+      taskIds: values.taskIds,
+      noteIds: values.noteIds,
+      ideaIds: values.ideaIds,
+      fileIds: values.fileIds,
+      tags: values.tags,
+      updatedAt: timestamp,
+    }
+
+    setProjectGoals((currentGoals) => currentGoals.map((goal) => (goal.id === goalId ? nextGoal : goal)))
+    setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.map((block) => block.linkedItemType === 'goal' && block.linkedItemId === goalId ? buildWorkspaceBlockFromProjectGoal(nextGoal, block) : block))
+  }
+
+  function handleDeleteProjectGoal(goalId: string) {
+    const goal = projectGoalsForProject.find((item) => item.id === goalId)
+
+    if (!goal) {
+      return
+    }
+
+    const linkedBlock = workspaceBlocks.find((block) => block.linkedItemType === 'goal' && block.linkedItemId === goal.id)
+    const shouldDelete = settings.behavior.askBeforeDelete
+      ? window.confirm(linkedBlock ? `Удалить цель «${goal.title}» и связанный workspace-блок?` : `Удалить цель «${goal.title}»?`)
+      : true
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setProjectGoals((currentGoals) => currentGoals.filter((item) => item.id !== goalId))
+
+    if (linkedBlock) {
+      setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.filter((block) => block.id !== linkedBlock.id))
+      setProjectWorkspaceRelations((currentRelations) => currentRelations.filter((relation) => relation.fromBlockId !== linkedBlock.id && relation.toBlockId !== linkedBlock.id))
+    }
+  }
+
+  function handleCreateProjectMilestone(values: ProjectMilestoneFormValues) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const nextMilestone: ProjectMilestone = {
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      title: values.title.trim(),
+      description: values.description.trim(),
+      status: values.status,
+      deadline: values.deadline ? toDeadlineValue(values.deadline) : null,
+      taskIds: values.taskIds,
+      order: projectMilestonesForProject.length,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    setProjectMilestones((currentMilestones) => [...currentMilestones, nextMilestone])
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'milestone_created',
+      title: `Создан этап: ${nextMilestone.title}`,
+      description: nextMilestone.description,
+      relatedItemId: nextMilestone.id,
+      relatedItemType: 'milestone',
+      createdAt: timestamp,
+    })
+  }
+
+  function handleUpdateProjectMilestone(milestoneId: string, values: ProjectMilestoneFormValues) {
+    const currentMilestone = projectMilestonesForProject.find((milestone) => milestone.id === milestoneId)
+
+    if (!currentMilestone) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+
+    setProjectMilestones((currentMilestones) => currentMilestones.map((milestone) =>
+      milestone.id === milestoneId
+        ? {
+            ...milestone,
+            title: values.title.trim(),
+            description: values.description.trim(),
+            status: values.status,
+            deadline: values.deadline ? toDeadlineValue(values.deadline) : null,
+            taskIds: values.taskIds,
+            updatedAt: timestamp,
+          }
+        : milestone,
+    ))
+  }
+
+  function handleDeleteProjectMilestone(milestoneId: string) {
+    const milestone = projectMilestonesForProject.find((item) => item.id === milestoneId)
+
+    if (!milestone) {
+      return
+    }
+
+    const shouldDelete = settings.behavior.askBeforeDelete
+      ? window.confirm(`Удалить этап «${milestone.title}»?`)
+      : true
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setProjectMilestones((currentMilestones) => currentMilestones.filter((item) => item.id !== milestoneId))
+  }
+
+  function handleMoveProjectMilestone(milestoneId: string, direction: 'up' | 'down') {
+    const orderedMilestones = [...projectMilestonesForProject]
+    const currentIndex = orderedMilestones.findIndex((milestone) => milestone.id === milestoneId)
+
+    if (currentIndex === -1) {
+      return
+    }
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+
+    if (targetIndex < 0 || targetIndex >= orderedMilestones.length) {
+      return
+    }
+
+    const reorderedMilestones = [...orderedMilestones]
+    const [movedMilestone] = reorderedMilestones.splice(currentIndex, 1)
+    reorderedMilestones.splice(targetIndex, 0, movedMilestone)
+    const timestamp = new Date().toISOString()
+    const reorderedIds = new Map(reorderedMilestones.map((milestone, index) => [milestone.id, index]))
+
+    setProjectMilestones((currentMilestones) => currentMilestones.map((milestone) =>
+      milestone.projectId === projectId && reorderedIds.has(milestone.id)
+        ? {
+            ...milestone,
+            order: reorderedIds.get(milestone.id) ?? milestone.order,
+            updatedAt: timestamp,
+          }
+        : milestone,
+    ))
+  }
+
+  function createLinkedWorkspaceEntity(type: ProjectWorkspaceBlock['type'], timestamp: string) {
+    if (!project) {
+      return null
+    }
+
+    switch (type) {
+      case 'task': {
+        const entityId = crypto.randomUUID()
+        const nextTask: Task = {
+          id: entityId,
+          title: 'Новая задача проекта',
+          description: '',
+          tags: [],
+          status: settings.behavior.defaultTaskStatus,
+          priority: settings.behavior.defaultTaskPriority,
+          deadline: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          completedAt: null,
+          projectId: project.id,
+          noteIds: [],
+          ideaIds: [],
+          fileIds: [],
+          goalIds: [],
+        }
+
+        setTasks((currentTasks) => [nextTask, ...currentTasks])
+        updateProjectLinks({ taskIds: [...project.taskIds, entityId] })
+        appendProjectActivity({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'task_created',
+          title: `Создана задача: ${nextTask.title}`,
+          description: nextTask.description,
+          relatedItemId: nextTask.id,
+          relatedItemType: 'task',
+          createdAt: timestamp,
+        })
+
+        return { linkedItemId: entityId, linkedItemType: 'task' as const, title: nextTask.title, relatedType: 'task' as const }
+      }
+      case 'note': {
+        const entityId = crypto.randomUUID()
+        const nextNote: Note = {
+          id: entityId,
+          title: 'Новая заметка проекта',
+          summary: '',
+          content: '',
+          type: 'project_material',
+          status: 'draft',
+          tags: [],
+          category: 'project',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          projectId: project.id,
+          taskIds: [],
+          ideaIds: [],
+          fileIds: [],
+          goalIds: [],
+        }
+
+        setNotes((currentNotes) => [nextNote, ...currentNotes])
+        updateProjectLinks({ noteIds: [...project.noteIds, entityId] })
+        appendProjectActivity({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'note_created',
+          title: `Создана заметка: ${nextNote.title}`,
+          description: nextNote.summary,
+          relatedItemId: nextNote.id,
+          relatedItemType: 'note',
+          createdAt: timestamp,
+        })
+
+        return { linkedItemId: entityId, linkedItemType: 'note' as const, title: nextNote.title, relatedType: 'note' as const }
+      }
+      case 'idea': {
+        const entityId = crypto.randomUUID()
+        const nextIdea: Idea = {
+          id: entityId,
+          title: 'Новая идея проекта',
+          description: '',
+          problem: '',
+          value: '',
+          nextStep: '',
+          status: 'new',
+          priority: 'medium',
+          difficulty: 'medium',
+          tags: [],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          projectId: project.id,
+          taskIds: [],
+          noteIds: [],
+          goalIds: [],
+        }
+
+        setIdeas((currentIdeas) => [nextIdea, ...currentIdeas])
+        updateProjectLinks({ ideaIds: [...project.ideaIds, entityId] })
+        appendProjectActivity({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'idea_created',
+          title: `Создана идея: ${nextIdea.title}`,
+          description: nextIdea.description,
+          relatedItemId: nextIdea.id,
+          relatedItemType: 'idea',
+          createdAt: timestamp,
+        })
+
+        return { linkedItemId: entityId, linkedItemType: 'idea' as const, title: nextIdea.title, relatedType: 'idea' as const }
+      }
+      case 'file': {
+        const entityId = crypto.randomUUID()
+        const nextFile: FileItem = {
+          id: entityId,
+          title: 'Новый файл проекта',
+          description: '',
+          type: 'document',
+          path: '',
+          previewUrl: null,
+          tags: [],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          projectId: project.id,
+          taskId: null,
+          noteId: null,
+          ideaId: null,
+        }
+
+        setFiles((currentFiles) => [nextFile, ...currentFiles])
+        updateProjectLinks({ fileIds: [...project.fileIds, entityId] })
+
+        return { linkedItemId: entityId, linkedItemType: 'file' as const, title: nextFile.title, relatedType: 'file' as const }
+      }
+      case 'goal': {
+        const entityId = crypto.randomUUID()
+        const nextGoal: ProjectGoal = {
+          id: entityId,
+          projectId: project.id,
+          title: 'Новая цель проекта',
+          description: '',
+          status: 'planned',
+          priority: project.priority ?? 'medium',
+          progress: 0,
+          deadline: null,
+          taskIds: [],
+          noteIds: [],
+          ideaIds: [],
+          fileIds: [],
+          tags: [],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }
+
+        setProjectGoals((currentGoals) => [nextGoal, ...currentGoals])
+        appendProjectActivity({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          type: 'goal_created',
+          title: `Создана цель: ${nextGoal.title}`,
+          description: nextGoal.description,
+          relatedItemId: nextGoal.id,
+          relatedItemType: 'goal',
+          createdAt: timestamp,
+        })
+
+        return { linkedItemId: entityId, linkedItemType: 'goal' as const, title: nextGoal.title, relatedType: 'goal' as const }
+      }
+      default:
+        return null
+    }
+  }
+
+  function handleCreateWorkspaceBlock(type: ProjectWorkspaceBlock['type']) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const id = crypto.randomUUID()
+    const linkedEntity = createLinkedWorkspaceEntity(type, timestamp)
+
+    const nextBlock: ProjectWorkspaceBlock = {
+      id,
+      projectId: project.id,
+      type,
+      title: linkedEntity?.title ?? workspaceBlockTitles[type],
+      content: '',
+      description: '',
+      sectionId: workspaceSectionFilter !== 'all' && workspaceSectionFilter !== 'none' ? workspaceSectionFilter : null,
+      tags: [],
+      linkedItemId: linkedEntity?.linkedItemId,
+      linkedItemType: linkedEntity?.linkedItemType,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    setProjectWorkspaceBlocks((currentBlocks) => [nextBlock, ...currentBlocks])
+    setSelectedWorkspaceBlockId(id)
+    setIsWorkspaceInspectorVisible(true)
+
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'workspace_block_created',
+      title: `Добавлен workspace-блок: ${linkedEntity?.title ?? workspaceBlockTitles[type]}`,
+      description: type,
+      relatedItemId: id,
+      relatedItemType: linkedEntity?.relatedType ?? null,
+      createdAt: timestamp,
+    })
+  }
+
+  function handleToolbarCreateBlock(tool: string) {
+    setActiveTool(tool)
+
+    const toolToType: Partial<Record<string, ProjectWorkspaceBlock['type']>> = {
+      text: 'text',
+      task: 'task',
+      note: 'note',
+      idea: 'idea',
+      goal: 'goal',
+      file: 'file',
+      image: 'image',
+      link: 'link',
+      comment: 'comment',
+      draw: 'drawing',
+    }
+
+    const nextType = toolToType[tool]
+
+    if (tool === 'image' || tool === 'file' || tool === 'link') {
+      openAttachmentUploader(tool)
+      return
+    }
+
+    if (nextType) {
+      handleCreateWorkspaceBlock(nextType)
+    }
+  }
+
+  function handleSelectTool(tool: string) {
+    setActiveTool(tool)
+
+    if (tool !== 'relation') {
+      setRelationSourceBlockId(null)
+      setRelationNotice(null)
+    }
+  }
+
+  function handleOpenRelationSheet(initial?: {
+    fromBlockId?: string | null
+    toBlockId?: string | null
+    type?: ProjectWorkspaceRelation['type']
+    label?: string
+  }) {
+    setRelationDraft({
+      fromBlockId: initial?.fromBlockId ?? relationSourceBlockId ?? selectedWorkspaceBlockId ?? '',
+      toBlockId: initial?.toBlockId ?? '',
+      type: initial?.type ?? 'related',
+      label: initial?.label,
+    })
+    setIsAddRelationSheetOpen(true)
+  }
+
+  function handleCreateRelation(
+    fromBlockId: string,
+    toBlockId: string,
+    type: ProjectWorkspaceRelation['type'],
+    label?: string,
+  ) {
+    if (!project || !fromBlockId || !toBlockId || fromBlockId === toBlockId) {
+      if (fromBlockId === toBlockId) {
+        setRelationNotice('Нельзя создать связь блока с самим собой.')
+      }
+
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const trimmedLabel = label?.trim() || undefined
+    const existingRelation = workspaceRelationsForProject.find((relation) => relation.fromBlockId === fromBlockId && relation.toBlockId === toBlockId && relation.type === type)
+
+    if (existingRelation) {
+      if (existingRelation.label === trimmedLabel) {
+        setRelationNotice('Такая связь уже существует.')
+      } else {
+        setProjectWorkspaceRelations((currentRelations) =>
+          currentRelations.map((relation) =>
+            relation.id === existingRelation.id
+              ? {
+                  ...relation,
+                  fromBlockId,
+                  toBlockId,
+                  type,
+                  label: trimmedLabel,
+                  updatedAt: timestamp,
+                }
+              : relation,
+          ),
+        )
+        setRelationNotice('Тип существующей связи обновлён.')
+        setSelectedRelationId(existingRelation.id)
+      }
+
+      setActiveTool('select')
+      setRelationSourceBlockId(null)
+      return
+    }
+
+    const nextRelation: ProjectWorkspaceRelation = {
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      fromBlockId,
+      toBlockId,
+      type,
+      label: trimmedLabel,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    setProjectWorkspaceRelations((currentRelations) => [nextRelation, ...currentRelations])
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'relation_created',
+      title: 'Создана связь между блоками',
+      description: `${fromBlockId} -> ${toBlockId}`,
+      relatedItemId: nextRelation.id,
+      relatedItemType: null,
+      createdAt: timestamp,
+    })
+    setSelectedRelationId(nextRelation.id)
+    setActiveTool('select')
+    setRelationSourceBlockId(null)
+    setRelationNotice('Связь добавлена.')
+  }
+
+  function handleDeleteRelation(relationId: string) {
+    const relation = workspaceRelationsForProject.find((item) => item.id === relationId)
+
+    if (!relation) {
+      return
+    }
+
+    const shouldDelete = settings.behavior.askBeforeDelete
+      ? window.confirm('Удалить связь между блоками?')
+      : true
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setProjectWorkspaceRelations((currentRelations) => currentRelations.filter((item) => item.id !== relationId))
+
+    if (selectedRelationId === relationId) {
+      setSelectedRelationId(null)
+    }
+  }
+
+  function handleSelectWorkspaceBlock(blockId: string | null) {
+    setSelectedWorkspaceBlockId(blockId)
+
+    if (blockId) {
+      setIsWorkspaceInspectorVisible(true)
+    }
+
+    if (!blockId) {
+      return
+    }
+
+    if (activeTool !== 'relation') {
+      return
+    }
+
+    if (!relationSourceBlockId) {
+      setRelationSourceBlockId(blockId)
+      setRelationNotice('Выбран исходный блок. Теперь нажмите на второй блок.')
+      return
+    }
+
+    if (relationSourceBlockId === blockId) {
+      setRelationNotice('Выберите другой блок для связи.')
+      return
+    }
+
+    const fromBlock = workspaceBlocks.find((block) => block.id === relationSourceBlockId)
+    const toBlock = workspaceBlocks.find((block) => block.id === blockId)
+
+    if (!fromBlock || !toBlock) {
+      return
+    }
+
+    const existingRelation = workspaceRelationsForProject.find((relation) => {
+      const isForwardMatch = relation.fromBlockId === relationSourceBlockId && relation.toBlockId === blockId
+      const isReverseMatch = relation.fromBlockId === blockId && relation.toBlockId === relationSourceBlockId
+      return isForwardMatch || isReverseMatch
+    })
+
+    handleOpenRelationSheet({
+      fromBlockId: relationSourceBlockId,
+      toBlockId: blockId,
+      type: existingRelation?.type ?? getSuggestedWorkspaceRelationType(fromBlock, toBlock),
+      label: existingRelation?.label,
+    })
+
+    if (existingRelation) {
+      setRelationNotice('Связь между этими блоками уже есть. Можно изменить её тип.')
+      setSelectedRelationId(existingRelation.id)
+    }
+  }
+
+  function updateLinkedEntityFromBlock(block: ProjectWorkspaceBlock, updates: Partial<ProjectWorkspaceBlock>, timestamp: string) {
+    const linkedItemType = Object.prototype.hasOwnProperty.call(updates, 'linkedItemType')
+      ? updates.linkedItemType
+      : block.linkedItemType
+    const linkedItemId = Object.prototype.hasOwnProperty.call(updates, 'linkedItemId')
+      ? updates.linkedItemId
+      : block.linkedItemId
+
+    if (!linkedItemType || !linkedItemId) {
+      return
+    }
+
+    const nextTitle = updates.title ?? block.title
+    const nextContent = updates.content ?? updates.description ?? block.content ?? block.description ?? ''
+    const nextDescription = updates.description ?? updates.content ?? block.description ?? block.content ?? ''
+    const nextTags = updates.tags ?? block.tags ?? []
+
+    switch (linkedItemType) {
+      case 'task':
+        setTasks((currentTasks) =>
+          currentTasks.map((task) =>
+            task.id === linkedItemId
+              ? {
+                  ...task,
+                  title: nextTitle,
+                  description: nextDescription,
+                  tags: nextTags,
+                  updatedAt: timestamp,
+                }
+              : task,
+          ),
+        )
+        break
+      case 'note':
+        setNotes((currentNotes) =>
+          currentNotes.map((note) =>
+            note.id === linkedItemId
+              ? {
+                  ...note,
+                  title: nextTitle,
+                  content: nextContent,
+                  tags: nextTags,
+                  updatedAt: timestamp,
+                }
+              : note,
+          ),
+        )
+        break
+      case 'idea':
+        setIdeas((currentIdeas) =>
+          currentIdeas.map((idea) =>
+            idea.id === linkedItemId
+              ? {
+                  ...idea,
+                  title: nextTitle,
+                  description: nextDescription,
+                  tags: nextTags,
+                  updatedAt: timestamp,
+                }
+              : idea,
+          ),
+        )
+        break
+      case 'file':
+        if (projectAttachmentsForProject.some((attachment) => attachment.id === linkedItemId)) {
+          setProjectAttachments((currentAttachments) =>
+            currentAttachments.map((attachment) =>
+              attachment.id === linkedItemId
+                ? {
+                    ...attachment,
+                    title: nextTitle,
+                    description: nextDescription,
+                    tags: nextTags,
+                    externalUrl: updates.externalUrl ?? block.externalUrl ?? attachment.externalUrl,
+                    previewUrl: updates.previewUrl ?? updates.imageUrl ?? block.previewUrl ?? block.imageUrl ?? attachment.previewUrl,
+                    dataUrl: updates.dataUrl ?? block.dataUrl ?? attachment.dataUrl,
+                    linkedBlockId: block.id,
+                    updatedAt: timestamp,
+                  }
+                : attachment,
+            ),
+          )
+          break
+        }
+
+        setFiles((currentFiles) =>
+          currentFiles.map((file) =>
+            file.id === linkedItemId
+              ? {
+                  ...file,
+                  title: nextTitle,
+                  description: nextDescription,
+                  tags: nextTags,
+                  updatedAt: timestamp,
+                }
+              : file,
+          ),
+        )
+        break
+      case 'goal':
+        if (projectGoalsForProject.some((goal) => goal.id === linkedItemId)) {
+          setProjectGoals((currentGoals) =>
+            currentGoals.map((goal) =>
+              goal.id === linkedItemId
+                ? {
+                    ...goal,
+                    title: nextTitle,
+                    description: nextDescription,
+                    tags: nextTags,
+                    updatedAt: timestamp,
+                  }
+                : goal,
+            ),
+          )
+          break
+        }
+
+        setGoals((currentGoals) =>
+          currentGoals.map((goal) =>
+            goal.id === linkedItemId
+              ? {
+                  ...goal,
+                  title: nextTitle,
+                  description: nextDescription,
+                  updatedAt: timestamp,
+                }
+              : goal,
+          ),
+        )
+        break
+      default:
+        break
+    }
+  }
+
+  function handleUpdateWorkspaceBlock(blockId: string, updates: Partial<ProjectWorkspaceBlock>) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const currentBlock = workspaceBlocks.find((block) => block.id === blockId && block.projectId === project.id)
+
+    if (!currentBlock) {
+      return
+    }
+
+    updateLinkedEntityFromBlock(currentBlock, updates, timestamp)
+
+    const nextSectionId = Object.prototype.hasOwnProperty.call(updates, 'sectionId')
+      ? updates.sectionId ?? null
+      : currentBlock.sectionId ?? null
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'sectionId') && nextSectionId !== (currentBlock.sectionId ?? null)) {
+      appendProjectActivity({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        type: 'workspace_block_section_changed',
+        title: `Блок «${currentBlock.title}» привязан к разделу`,
+        description: nextSectionId ? projectSections.find((section) => section.id === nextSectionId)?.title ?? 'Раздел' : 'Без раздела',
+        relatedItemId: currentBlock.id,
+        relatedItemType: null,
+        createdAt: timestamp,
+      })
+    } else if (updates.x !== undefined || updates.y !== undefined) {
+      appendProjectActivity({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        type: 'workspace_block_moved',
+        title: `Перемещён блок: ${currentBlock.title}`,
+        description: 'Позиция блока обновлена на canvas.',
+        relatedItemId: currentBlock.id,
+        relatedItemType: null,
+        createdAt: timestamp,
+      })
+    } else if (Object.keys(updates).some((key) => key !== 'updatedAt')) {
+      appendProjectActivity({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        type: 'workspace_block_updated',
+        title: `Обновлён блок: ${updates.title ?? currentBlock.title}`,
+        description: 'Изменены свойства блока рабочей области.',
+        relatedItemId: currentBlock.id,
+        relatedItemType: null,
+        createdAt: timestamp,
+      })
+    }
+
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      currentBlocks.map((block) =>
+        block.id === blockId && block.projectId === project.id
+          ? {
+              ...block,
+              ...updates,
+              projectId: block.projectId,
+              updatedAt: timestamp,
+            }
+          : block,
+      ),
+    )
+  }
+
+  function handleArrangeWorkspaceBlocks(positions: Array<{ id: string; x: number; y: number }>) {
+    if (!project || positions.length === 0) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const positionsMap = new Map(positions.map((item) => [item.id, item]))
+
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      currentBlocks.map((block) => {
+        const nextPosition = positionsMap.get(block.id)
+
+        if (!nextPosition || block.projectId !== project.id) {
+          return block
+        }
+
+        return {
+          ...block,
+          x: Math.max(24, nextPosition.x),
+          y: Math.max(24, nextPosition.y),
+          width: 300,
+          height: 170,
+          updatedAt: timestamp,
+        }
+      }),
+    )
+
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'workspace_block_moved',
+      title: 'Блоки рабочей области упорядочены',
+      description: 'Позиции блоков выровнены по сетке.',
+      relatedItemId: null,
+      relatedItemType: null,
+      createdAt: timestamp,
+    })
+  }
+
+  function handleOpenWorkspaceBlockFromTabs(blockId: string) {
+    setSelectedWorkspaceBlockId(blockId)
+    setIsWorkspaceInspectorVisible(true)
+    handleChangeTab('workspace')
+  }
+
+  function handleStartRelationFromBlock(blockId: string) {
+    setSelectedWorkspaceBlockId(blockId)
+    setIsWorkspaceInspectorVisible(true)
+    setRelationSourceBlockId(blockId)
+    setActiveTool('relation')
+    handleOpenRelationSheet({ fromBlockId: blockId })
+  }
+
+  function handleOpenTaskFromProject(_taskId: string) {
+    navigate('/tasks')
+  }
+
+  function handleOpenNoteFromProject(noteId: string) {
+    navigate(`/notes/${noteId}`)
+  }
+
+  function handleOpenIdeaFromProject(ideaId: string) {
+    navigate(`/ideas/${ideaId}`)
+  }
+
+  function handleDeleteWorkspaceBlock(blockId: string) {
+    if (!project) {
+      return
+    }
+
+    const block = workspaceBlocks.find((item) => item.id === blockId)
+
+    if (!block) {
+      return
+    }
+
+    const linkedItemType = block.linkedItemType
+    const linkedItemId = block.linkedItemId
+    let deleteLinkedEntity = false
+
+    if (linkedItemType && linkedItemId) {
+      const action = window.prompt(
+        [
+          `Блок «${block.title}» связан с сущностью типа «${linkedItemType}».`,
+          'Введите 1, чтобы удалить только блок.',
+          'Введите 2, чтобы удалить блок и связанную сущность.',
+          'Оставьте пусто или нажмите Cancel, чтобы отменить.',
+        ].join('\n'),
+        '1',
+      )
+
+      if (!action) {
+        return
+      }
+
+      if (action.trim() === '2') {
+        deleteLinkedEntity = true
+      } else if (action.trim() !== '1') {
+        return
+      }
+    } else {
+      const shouldDelete = settings.behavior.askBeforeDelete
+        ? window.confirm(`Удалить блок «${block.title}»?`)
+        : true
+
+      if (!shouldDelete) {
+        return
+      }
+    }
+
+    setProjectWorkspaceBlocks((currentBlocks) => currentBlocks.filter((item) => item.id !== blockId))
+    setProjectWorkspaceRelations((currentRelations) => currentRelations.filter((relation) => relation.fromBlockId !== blockId && relation.toBlockId !== blockId))
+
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'workspace_block_deleted',
+      title: `Удалён блок: ${block.title}`,
+      description: deleteLinkedEntity ? 'Блок удалён вместе со связанной сущностью.' : 'Удалён только блок рабочей области.',
+      relatedItemId: block.id,
+      relatedItemType: null,
+      createdAt: new Date().toISOString(),
+    })
+
+    if (deleteLinkedEntity && linkedItemType && linkedItemId) {
+      deleteRelationsForItem(linkedItemId)
+
+      switch (linkedItemType) {
+        case 'task':
+          setTasks((currentTasks) => currentTasks.filter((task) => task.id !== linkedItemId))
+          updateProjectLinks({ taskIds: project.taskIds.filter((id) => id !== linkedItemId) })
+          break
+        case 'note':
+          setNotes((currentNotes) => currentNotes.filter((note) => note.id !== linkedItemId))
+          updateProjectLinks({ noteIds: project.noteIds.filter((id) => id !== linkedItemId) })
+          break
+        case 'idea':
+          setIdeas((currentIdeas) => currentIdeas.filter((idea) => idea.id !== linkedItemId))
+          updateProjectLinks({ ideaIds: project.ideaIds.filter((id) => id !== linkedItemId) })
+          break
+        case 'file':
+          if (projectAttachmentsForProject.some((attachment) => attachment.id === linkedItemId)) {
+            setProjectAttachments((currentAttachments) => currentAttachments.filter((attachment) => attachment.id !== linkedItemId))
+          } else {
+            setFiles((currentFiles) => currentFiles.filter((file) => file.id !== linkedItemId))
+            updateProjectLinks({ fileIds: project.fileIds.filter((id) => id !== linkedItemId) })
+          }
+          break
+        case 'goal':
+          if (projectGoalsForProject.some((goal) => goal.id === linkedItemId)) {
+            setProjectGoals((currentGoals) => currentGoals.filter((goal) => goal.id !== linkedItemId))
+          } else {
+            setGoals((currentGoals) => currentGoals.filter((goal) => goal.id !== linkedItemId))
+            updateProjectLinks({ goalIds: project.goalIds.filter((id) => id !== linkedItemId) })
+          }
+          break
+        default:
+          break
+      }
+
+      setProjectWorkspaceBlocks((currentBlocks) =>
+        currentBlocks.map((item) =>
+          item.linkedItemId === linkedItemId && item.id !== blockId
+            ? {
+                ...item,
+                linkedItemId: undefined,
+                linkedItemType: undefined,
+                updatedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      )
+    }
+
+    if (selectedWorkspaceBlockId === blockId) {
+      setSelectedWorkspaceBlockId(null)
+    }
+
+    if (relationSourceBlockId === blockId) {
+      setRelationSourceBlockId(null)
+    }
   }
 
   function getSectionRelatedItems(sectionId: string | null) {
@@ -498,331 +2029,11 @@ export function ProjectDetailPage() {
         .filter((item) => item.id !== section.id),
     )
     updateProjectLinks({ sectionIds: project.sectionIds.filter((id) => id !== section.id) })
-      deleteRelationsForItem(section.id)
+    deleteRelationsForItem(section.id)
 
     if (activeSectionId === section.id) {
       setActiveSectionId(null)
     }
-  }
-
-  function handleAddItem(values: ProjectWorkspaceItemFormValues) {
-    if (!project) {
-      return
-    }
-
-    const timestamp = new Date().toISOString()
-    let entityId: string | null = null
-    let taskIds = project.taskIds
-    let noteIds = project.noteIds
-    let ideaIds = project.ideaIds
-    let fileIds = project.fileIds
-    let goalIds = project.goalIds
-
-    if (values.kind === 'task') {
-      entityId = crypto.randomUUID()
-      const nextTask: Task = {
-        id: entityId,
-        title: values.title,
-        description: values.description || values.content,
-        status: settings.behavior.defaultTaskStatus,
-        priority: settings.behavior.defaultTaskPriority,
-        deadline: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        completedAt: null,
-        projectId: project.id,
-        noteIds: [],
-        ideaIds: [],
-        fileIds: [],
-        goalIds: [],
-      }
-      setTasks((currentTasks) => [nextTask, ...currentTasks])
-      taskIds = uniqueIds([...project.taskIds, entityId])
-    }
-
-    if (values.kind === 'note') {
-      entityId = crypto.randomUUID()
-      const nextNote: Note = {
-        id: entityId,
-        title: values.title,
-        content: values.content || values.description,
-        tags: [],
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        projectId: project.id,
-        taskIds: [],
-        ideaIds: [],
-        fileIds: [],
-        goalIds: [],
-      }
-      setNotes((currentNotes) => [nextNote, ...currentNotes])
-      noteIds = uniqueIds([...project.noteIds, entityId])
-    }
-
-    if (values.kind === 'idea') {
-      entityId = crypto.randomUUID()
-      const nextIdea: Idea = {
-        id: entityId,
-        title: values.title,
-        description: values.description || values.content,
-        status: 'new',
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        projectId: project.id,
-        taskIds: [],
-        noteIds: [],
-        goalIds: [],
-      }
-      setIdeas((currentIdeas) => [nextIdea, ...currentIdeas])
-      ideaIds = uniqueIds([...project.ideaIds, entityId])
-    }
-
-    if (values.kind === 'goal') {
-      entityId = crypto.randomUUID()
-      const nextGoal: Goal = {
-        id: entityId,
-        title: values.title,
-        description: values.description || values.content,
-        status: 'new',
-        deadline: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        projectId: project.id,
-        taskIds: [],
-        noteIds: [],
-        ideaIds: [],
-      }
-      setGoals((currentGoals) => [nextGoal, ...currentGoals])
-      goalIds = uniqueIds([...project.goalIds, entityId])
-    }
-
-    if (values.kind === 'file' || values.kind === 'photo' || values.kind === 'link') {
-      entityId = crypto.randomUUID()
-      const nextFile: FileItem = {
-        id: entityId,
-        title: values.title,
-        description: values.description || values.content,
-        type: getFileType(values.kind),
-        path: values.url,
-        previewUrl: values.kind === 'photo' ? values.url || null : null,
-        tags: [],
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        projectId: project.id,
-        taskId: null,
-        noteId: null,
-        ideaId: null,
-      }
-      setFiles((currentFiles) => [nextFile, ...currentFiles])
-      fileIds = uniqueIds([...project.fileIds, entityId])
-    }
-
-    const nextBlock = createProjectSection({
-      projectId: project.id,
-      title: values.title,
-      description: values.description,
-      order: getNextOrder(sections, project.id, values.sectionId, 'block'),
-      kind: values.kind,
-      parentSectionId: values.sectionId,
-      entityId,
-      relatedBlockIds: [],
-      content: values.content,
-      url: values.url || null,
-    })
-
-    setSections((currentSections) => [...currentSections, nextBlock])
-    updateProjectLinks({ taskIds, noteIds, ideaIds, fileIds, goalIds })
-  }
-
-  function handleUpdateBlock(block: ProjectSection, values: ProjectBlockEditorValues) {
-    if (!project) {
-      return
-    }
-
-    const timestamp = new Date().toISOString()
-    const blockRelationType = getBlockRelationType(block.kind)
-
-    setSections((currentSections) => {
-      const nextOrder =
-        block.parentSectionId !== values.sectionId
-          ? getNextOrder(
-              currentSections.filter((item) => item.id !== block.id),
-              project.id,
-              values.sectionId,
-              'block',
-            )
-          : block.order
-
-      const updatedSections = currentSections.map((item) =>
-        item.id === block.id
-          ? {
-              ...item,
-              title: values.title,
-              description: values.description,
-              content: values.content,
-              url: values.url || null,
-              parentSectionId: values.sectionId,
-              order: nextOrder,
-              updatedAt: timestamp,
-            }
-          : item,
-      )
-
-      return syncBlockRelations(updatedSections, project.id, block.id, values.relatedBlockIds)
-    })
-
-    if (block.entityId && blockRelationType) {
-      syncRelationsForItem(
-        block.entityId,
-        blockRelationType as LinkableRelationType,
-        values.relatedItems,
-      )
-    }
-
-    if (block.kind === 'task' && block.entityId) {
-      setTasks((currentTasks) =>
-        currentTasks.map((item) =>
-          item.id === block.entityId
-            ? {
-                ...item,
-                title: values.title,
-                description: values.description || values.content,
-                updatedAt: timestamp,
-              }
-            : item,
-        ),
-      )
-      return
-    }
-
-    if (block.kind === 'note' && block.entityId) {
-      setNotes((currentNotes) =>
-        currentNotes.map((item) =>
-          item.id === block.entityId
-            ? {
-                ...item,
-                title: values.title,
-                content: values.content || values.description,
-                updatedAt: timestamp,
-              }
-            : item,
-        ),
-      )
-      return
-    }
-
-    if (block.kind === 'idea' && block.entityId) {
-      setIdeas((currentIdeas) =>
-        currentIdeas.map((item) =>
-          item.id === block.entityId
-            ? {
-                ...item,
-                title: values.title,
-                description: values.description || values.content,
-                updatedAt: timestamp,
-              }
-            : item,
-        ),
-      )
-      return
-    }
-
-    if (block.kind === 'goal' && block.entityId) {
-      setGoals((currentGoals) =>
-        currentGoals.map((item) =>
-          item.id === block.entityId
-            ? {
-                ...item,
-                title: values.title,
-                description: values.description || values.content,
-                updatedAt: timestamp,
-              }
-            : item,
-        ),
-      )
-      return
-    }
-
-    if ((block.kind === 'file' || block.kind === 'photo' || block.kind === 'link') && block.entityId) {
-      setFiles((currentFiles) =>
-        currentFiles.map((item) =>
-          item.id === block.entityId
-            ? {
-                ...item,
-                title: values.title,
-                description: values.description || values.content,
-                path: values.url,
-                previewUrl: block.kind === 'photo' ? values.url || null : item.previewUrl,
-                updatedAt: timestamp,
-              }
-            : item,
-        ),
-      )
-    }
-  }
-
-  function handleDeleteBlock(block: ProjectSection) {
-    if (!project) {
-      return
-    }
-
-    const shouldDelete = settings.behavior.askBeforeDelete
-      ? window.confirm(`Удалить элемент «${block.title}» из проекта?`)
-      : true
-
-    if (!shouldDelete) {
-      return
-    }
-
-    setSections((currentSections) =>
-      currentSections
-        .map((item) =>
-          item.projectId === project.id && item.id !== block.id && item.relatedBlockIds.includes(block.id)
-            ? {
-                ...item,
-                relatedBlockIds: item.relatedBlockIds.filter((id) => id !== block.id),
-                updatedAt: new Date().toISOString(),
-              }
-            : item,
-        )
-        .filter((item) => item.id !== block.id),
-    )
-
-    if (block.entityId && getBlockRelationType(block.kind)) {
-      deleteRelationsForItem(block.entityId)
-    }
-
-    if (block.kind === 'task' && block.entityId) {
-      setTasks((currentTasks) => currentTasks.filter((item) => item.id !== block.entityId))
-      updateProjectLinks({ taskIds: project.taskIds.filter((id) => id !== block.entityId) })
-      return
-    }
-
-    if (block.kind === 'note' && block.entityId) {
-      setNotes((currentNotes) => currentNotes.filter((item) => item.id !== block.entityId))
-      updateProjectLinks({ noteIds: project.noteIds.filter((id) => id !== block.entityId) })
-      return
-    }
-
-    if (block.kind === 'idea' && block.entityId) {
-      setIdeas((currentIdeas) => currentIdeas.filter((item) => item.id !== block.entityId))
-      updateProjectLinks({ ideaIds: project.ideaIds.filter((id) => id !== block.entityId) })
-      return
-    }
-
-    if (block.kind === 'goal' && block.entityId) {
-      setGoals((currentGoals) => currentGoals.filter((item) => item.id !== block.entityId))
-      updateProjectLinks({ goalIds: project.goalIds.filter((id) => id !== block.entityId) })
-      return
-    }
-
-    if ((block.kind === 'file' || block.kind === 'photo' || block.kind === 'link') && block.entityId) {
-      setFiles((currentFiles) => currentFiles.filter((item) => item.id !== block.entityId))
-      updateProjectLinks({ fileIds: project.fileIds.filter((id) => id !== block.entityId) })
-      return
-    }
-
-    updateProjectLinks({})
   }
 
   if (!project) {
@@ -836,112 +2047,65 @@ export function ProjectDetailPage() {
     )
   }
 
+  const overviewStats = [
+    { label: 'Задач всего', value: projectStats.tasksTotal },
+    { label: 'Выполнено', value: projectStats.tasksCompleted },
+    { label: 'Активных', value: projectStats.tasksActive },
+    { label: 'Просрочено', value: projectStats.tasksOverdue },
+    { label: 'Идей', value: projectStats.ideasTotal },
+    { label: 'Заметок', value: projectStats.notesTotal },
+    { label: 'Файлов', value: projectStats.filesTotal },
+    { label: 'Блоков', value: projectStats.workspaceBlocksTotal },
+  ]
+
   return (
     <section className="space-y-6">
-      <div className="ui-panel p-5 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <button
-              type="button"
-              onClick={() => navigate('/projects')}
-              className="ui-button px-3 py-2 text-sm"
-            >
-              Назад к проектам
-            </button>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="ui-chip">{projectStatusLabels[project.status]}</span>
-              {project.deadline ? <span className="ui-chip">Срок: {new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'long' }).format(new Date(project.deadline))}</span> : null}
-            </div>
-            <h1 className="mt-3 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">{project.title}</h1>
-            <p className="page-description mt-3 max-w-3xl text-sm leading-6 text-(--text-muted) md:text-base">{project.description || 'Описание проекта пока не заполнено.'}</p>
-          </div>
+      <ProjectHeader
+        project={project}
+        progress={completionRate}
+        onBack={() => navigate('/projects')}
+        onEdit={() => handleChangeTab('settings')}
+        onAddElement={() => setIsAddElementSheetOpen(true)}
+      />
 
-          <button
-            type="button"
-            onClick={() => setIsEditModalOpen(true)}
-            className="ui-button-accent px-5 py-3"
-          >
-            Редактировать проект
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Прогресс</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{completionRate}%</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Задачи</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{linkedTasks.length}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Заметки и идеи</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{linkedNotes.length + linkedIdeas.length}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Файлы</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{linkedFiles.length}</p>
-          </div>
-        </div>
-      </div>
-
-      <section className="ui-panel p-4 md:p-5">
-        <div className="ui-filter-scroll">
-          {detailTabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={[
-                'ui-filter-pill',
-                activeTab === tab.key
-                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-[0_6px_18px_rgba(57,39,255,0.12)]'
-                  : 'hover:border-(--accent-border) hover:text-(--text-primary)',
-              ].join(' ')}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </section>
+      <ProjectTabs activeTab={activeTab} onChange={handleChangeTab} counts={projectTabCounts} />
 
       {activeTab === 'overview' ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="space-y-6">
-            <div className="ui-panel p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Overview</p>
-              <h2 className="ui-section-title mt-2">Сводка проекта</h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="ui-panel-elevated p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Workspace blocks</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{workspaceBlocks.length}</p>
-                </div>
-                <div className="ui-panel-elevated p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Sections</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{projectSections.length}</p>
-                </div>
-                <div className="ui-panel-elevated p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Relations</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{projectRelations.length}</p>
-                </div>
-              </div>
-            </div>
+          <div className="min-w-0">
+            <ProjectOverviewTab
+              project={project}
+              tasks={linkedTasks}
+              ideas={linkedIdeas}
+              goals={projectGoalsForProject}
+              milestones={projectMilestonesForProject}
+              activities={projectActivityFeed}
+              completionRate={completionRate}
+              stats={projectStats}
+              onOpenTask={handleOpenTaskFromProject}
+              onOpenIdea={handleOpenIdeaFromProject}
+              onCreateTask={() => handleCreateWorkspaceBlock('task')}
+              onOpenWorkspace={() => handleChangeTab('workspace')}
+              onCreateMilestone={handleCreateProjectMilestone}
+              onUpdateMilestone={handleUpdateProjectMilestone}
+              onDeleteMilestone={handleDeleteProjectMilestone}
+              onMoveMilestone={handleMoveProjectMilestone}
+            />
+          </div>
 
+          <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
             <section className="ui-panel p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Linked Items</p>
-              <h2 className="ui-section-title mt-2">Связанные элементы</h2>
-              <div className="mt-5">
-                <LinkedItemsPanel
-                  selectedItems={selectedProjectRelations}
-                  availableItems={availableRelationItems}
-                  onChange={(items) => syncRelationsForItem(project.id, 'project', items)}
-                  onOpenItem={(item) => navigate(getLinkedItemPath(item))}
-                />
+              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Ключевые показатели</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {overviewStats.map((item) => (
+                  <div key={item.label} className={`rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-3 py-3 ${item.value === 0 ? 'opacity-70' : ''}`}>
+                    <p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">{item.label}</p>
+                    <p className="mt-1 text-lg font-semibold text-(--text-primary)">{item.value}</p>
+                  </div>
+                ))}
               </div>
             </section>
-          </section>
 
-          <div className="space-y-6">
             <ProjectSectionList
               sections={projectSections}
               activeSectionId={activeSectionId}
@@ -956,173 +2120,169 @@ export function ProjectDetailPage() {
             />
 
             <section className="ui-panel p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Workspace Focus</p>
-              <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Навигация по рабочей поверхности</h2>
+              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Рабочая область</p>
+              <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Короткий обзор рабочей области</h2>
               <p className="mt-3 text-sm text-(--text-muted)">
-                {activeSectionId
-                  ? `Сейчас выбран подраздел «${projectSections.find((section) => section.id === activeSectionId)?.title ?? 'Подраздел'}».`
-                  : 'Сейчас показаны все карточки проекта. Выберите подраздел, если нужно сфокусироваться на одном потоке работы.'}
+                {workspaceBlocks.length > 0
+                  ? `${workspaceBlocks.length} ${workspaceBlocks.length === 1 ? 'блок' : workspaceBlocks.length < 5 ? 'блока' : 'блоков'} уже добавлено в рабочую область.`
+                  : 'Рабочая область пока пустая. Добавьте блоки, чтобы собрать задачи, заметки, идеи и материалы в одном потоке.'}
               </p>
-              <button type="button" onClick={() => setActiveTab('workspace')} className="ui-button-accent mt-4 px-4 py-3">Открыть workspace</button>
+              {activeSectionId ? <p className="mt-3 text-sm text-(--text-secondary)">Сейчас выбран раздел «{projectSections.find((section) => section.id === activeSectionId)?.title ?? 'Раздел'}».</p> : null}
+              <button type="button" onClick={() => handleChangeTab('workspace')} className="ui-button-accent mt-4 px-4 py-3">Открыть рабочую область</button>
             </section>
           </div>
         </div>
       ) : null}
+
+      {activeTab === 'goals' ? <ProjectGoalsTab goals={projectGoalsForProject} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} workspaceBlocks={workspaceBlocks} tagSuggestions={projectTagSuggestions} onCreateGoal={handleCreateProjectGoal} onUpdateGoal={handleUpdateProjectGoal} onDeleteGoal={handleDeleteProjectGoal} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
       {activeTab === 'workspace' ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <ProjectWorkspace
-            project={project}
-            sections={projectSections}
-            blocks={workspaceBlocks}
-            activeSectionId={activeSectionId}
-            selectedBlockId={selectedWorkspaceBlockId}
-            onSelectedBlockChange={setSelectedWorkspaceBlockId}
-            selectedBlockRelatedItems={selectedBlockRelations}
-            availableRelationItems={availableBlockRelationItems}
-            onOpenRelatedItem={(item) => navigate(getLinkedItemPath(item))}
-            onAddItem={handleAddItem}
-            onUpdateBlock={handleUpdateBlock}
-            onDeleteBlock={handleDeleteBlock}
-          />
-
-          <div className="space-y-6">
-            <ProjectSectionList
-              sections={projectSections}
-              activeSectionId={activeSectionId}
-              blockCounts={blockCounts}
-              onSelectSection={setActiveSectionId}
-              onCreateSection={handleCreateSection}
-              onUpdateSection={handleUpdateSection}
-              onDeleteSection={handleDeleteSection}
-              availableRelationItems={availableRelationItems}
-              getRelatedItems={getSectionRelatedItems}
-              onOpenRelatedItem={(item) => navigate(getLinkedItemPath(item))}
-            />
-
-            <section className="ui-panel p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Workspace Focus</p>
-              <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Навигация по рабочей поверхности</h2>
-              <p className="mt-3 text-sm text-(--text-muted)">
-                {activeSectionId
-                  ? `Сейчас выбран подраздел «${projectSections.find((section) => section.id === activeSectionId)?.title ?? 'Подраздел'}».`
-                  : 'Сейчас показаны все карточки проекта. Выберите подраздел, если нужно сфокусироваться на одном потоке работы.'}
-              </p>
-            </section>
+        <div className={[
+          'grid items-start gap-6',
+          isWorkspaceInspectorVisible ? 'lg:grid-cols-[72px_minmax(0,1fr)_360px]' : 'lg:grid-cols-[72px_minmax(0,1fr)]',
+        ].join(' ')}>
+          <div className="hidden lg:block lg:w-18">
+            <ProjectToolbar activeTool={activeTool} onSelectTool={handleSelectTool} onCreateBlock={handleToolbarCreateBlock} />
           </div>
+          <div className="min-w-0">
+            <ProjectWorkspace
+              project={project}
+              sections={projectSections}
+              workspaceBlocks={workspaceBlocks}
+              activeSectionFilter={workspaceSectionFilter}
+              selectedBlockId={selectedWorkspaceBlockId}
+              selectedRelationId={selectedRelationId}
+              activeTool={activeTool}
+              relationSourceBlockId={relationSourceBlockId}
+              relationNotice={relationNotice}
+              onSelectBlock={handleSelectWorkspaceBlock}
+              onSelectSectionFilter={setWorkspaceSectionFilter}
+              onCreateBlock={handleCreateWorkspaceBlock}
+              onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+              onUpdateBlock={handleUpdateWorkspaceBlock}
+              onArrangeBlocks={handleArrangeWorkspaceBlocks}
+              workspaceRelations={workspaceRelationsForProject}
+            />
+          </div>
+          {isWorkspaceInspectorVisible ? (
+            <div className="min-w-0 lg:w-90">
+              <ProjectInspector
+                project={project}
+                selectedBlock={selectedWorkspaceBlock}
+                sections={projectSections}
+                onUpdateBlock={handleUpdateWorkspaceBlock}
+                onDeleteBlock={handleDeleteWorkspaceBlock}
+                onClose={() => {
+                  setSelectedWorkspaceBlockId(null)
+                  setIsWorkspaceInspectorVisible(false)
+                }}
+                relatedTasks={linkedTasks}
+                relatedNotes={linkedNotes}
+                relatedIdeas={linkedIdeas}
+                relatedFiles={linkedFiles}
+                linkedEntity={linkedEntityByBlock}
+                selectedAttachment={selectedAttachment}
+                blockRelations={selectedBlockRelations}
+                onCreateBlock={handleCreateWorkspaceBlock}
+                onDeleteRelation={handleDeleteRelation}
+                onCreateRelation={handleStartRelationFromBlock}
+                onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
+                onEditAttachment={(attachmentId) => {
+                  const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+                  if (attachment) {
+                    openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+                  }
+                }}
+                onDeleteAttachment={handleDeleteAttachment}
+                onOpenAttachment={handleOpenAttachment}
+              />
+            </div>
+          ) : null}
+          <ProjectMobileToolbar
+            onAdd={() => setIsAddElementSheetOpen(true)}
+            onCreateText={() => handleToolbarCreateBlock('text')}
+            onCreateTask={() => handleToolbarCreateBlock('task')}
+            onCreateIdea={() => handleToolbarCreateBlock('idea')}
+            onMore={() => setIsAddElementSheetOpen(true)}
+          />
         </div>
       ) : null}
 
-      {activeTab === 'tasks' ? (
-        <section className="ui-panel p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Tasks</p>
-              <h2 className="ui-section-title mt-2">Задачи проекта</h2>
-            </div>
-            <button type="button" onClick={() => setActiveTab('workspace')} className="ui-button-accent px-4 py-3">Добавить в workspace</button>
-          </div>
-          <div className="mt-5 grid gap-3">
-            {linkedTasks.length > 0 ? linkedTasks.map((task) => (
-              <button key={task.id} type="button" onClick={() => navigate('/tasks')} className="ui-panel-elevated p-4 text-left">
-                <div className="flex flex-wrap items-center gap-2"><span className="ui-chip">Task</span><span className="ui-chip">{task.status}</span></div>
-                <p className="mt-3 text-base font-semibold text-(--text-primary)">{task.title}</p>
-                <p className="mt-1 line-clamp-2 text-sm text-(--text-muted)">{task.description || 'Без описания'}</p>
-              </button>
-            )) : <EmptyState title="Задач пока нет" description="Добавьте первую задачу в workspace проекта." actionLabel="Открыть workspace" onAction={() => setActiveTab('workspace')} />}
-          </div>
-        </section>
-      ) : null}
+      {activeTab === 'tasks' ? <ProjectTasksTab tasks={linkedTasks} workspaceBlocks={workspaceBlocks} onCreateTask={() => handleCreateWorkspaceBlock('task')} onOpenTask={handleOpenTaskFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
-      {activeTab === 'notes' ? (
-        <section className="ui-panel p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Notes</p>
-              <h2 className="ui-section-title mt-2">Заметки проекта</h2>
-            </div>
-            <button type="button" onClick={() => setActiveTab('workspace')} className="ui-button-accent px-4 py-3">Добавить в workspace</button>
-          </div>
-          <div className="mt-5 grid gap-3">
-            {linkedNotes.length > 0 ? linkedNotes.map((note) => (
-              <button key={note.id} type="button" onClick={() => navigate('/notes')} className="ui-panel-elevated p-4 text-left">
-                <span className="ui-chip">Note</span>
-                <p className="mt-3 text-base font-semibold text-(--text-primary)">{note.title}</p>
-                <p className="mt-1 line-clamp-3 text-sm text-(--text-muted)">{note.content || 'Без содержания'}</p>
-              </button>
-            )) : <EmptyState title="Заметок пока нет" description="Соберите контекст проекта заметками в workspace." actionLabel="Открыть workspace" onAction={() => setActiveTab('workspace')} />}
-          </div>
-        </section>
-      ) : null}
+      {activeTab === 'notes' ? <ProjectNotesTab notes={linkedNotes} workspaceBlocks={workspaceBlocks} onCreateNote={() => handleCreateWorkspaceBlock('note')} onOpenNote={handleOpenNoteFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
-      {activeTab === 'ideas' ? (
-        <section className="ui-panel p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Ideas</p>
-              <h2 className="ui-section-title mt-2">Идеи проекта</h2>
-            </div>
-            <button type="button" onClick={() => setActiveTab('workspace')} className="ui-button-accent px-4 py-3">Добавить в workspace</button>
-          </div>
-          <div className="mt-5 grid gap-3">
-            {linkedIdeas.length > 0 ? linkedIdeas.map((idea) => (
-              <button key={idea.id} type="button" onClick={() => navigate('/ideas')} className="ui-panel-elevated p-4 text-left">
-                <div className="flex items-center gap-2"><span className="ui-chip">Idea</span><span className="ui-chip">{idea.status}</span></div>
-                <p className="mt-3 text-base font-semibold text-(--text-primary)">{idea.title}</p>
-                <p className="mt-1 line-clamp-3 text-sm text-(--text-muted)">{idea.description || 'Без описания'}</p>
-              </button>
-            )) : <EmptyState title="Идей пока нет" description="Соберите гипотезы и мысли в рабочей поверхности проекта." actionLabel="Открыть workspace" onAction={() => setActiveTab('workspace')} />}
-          </div>
-        </section>
-      ) : null}
+      {activeTab === 'ideas' ? <ProjectIdeasTab ideas={linkedIdeas} workspaceBlocks={workspaceBlocks} onCreateIdea={() => handleCreateWorkspaceBlock('idea')} onOpenIdea={handleOpenIdeaFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
-      {activeTab === 'files' ? (
-        <section className="ui-panel p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Files</p>
-              <h2 className="ui-section-title mt-2">Файлы проекта</h2>
-            </div>
-            <button type="button" onClick={() => setActiveTab('workspace')} className="ui-button-accent px-4 py-3">Добавить в workspace</button>
-          </div>
-          <div className="mt-5 grid gap-3">
-            {linkedFiles.length > 0 ? linkedFiles.map((file) => (
-              <button key={file.id} type="button" onClick={() => navigate('/files')} className="ui-panel-elevated p-4 text-left">
-                <div className="flex items-center gap-2"><span className="ui-chip">File</span>{file.path ? <span className="ui-chip">linked</span> : null}</div>
-                <p className="mt-3 text-base font-semibold text-(--text-primary)">{file.title}</p>
-                <p className="mt-1 line-clamp-2 text-sm text-(--text-muted)">{file.description || file.path || 'Без описания'}</p>
-              </button>
-            )) : <EmptyState title="Файлов пока нет" description="Добавьте документы, ссылки или фото в workspace проекта." actionLabel="Открыть workspace" onAction={() => setActiveTab('workspace')} />}
-          </div>
-        </section>
-      ) : null}
+      {activeTab === 'files' ? <ProjectFilesTab files={linkedFiles} workspaceBlocks={workspaceBlocks} onCreateFile={() => openAttachmentUploader('file')} onCreateImage={() => openAttachmentUploader('image')} onCreateLink={() => openAttachmentUploader('link')} onOpenFile={handleOpenAttachment} onEditFile={(attachmentId) => {
+        const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
 
-      {activeTab === 'map' ? (
-        <ProjectRelationMap
-          project={project}
-          sections={projectSections}
-          blocks={workspaceBlocks}
-          tasks={linkedTasks}
-          notes={linkedNotes}
-          ideas={linkedIdeas}
-          files={linkedFiles}
-          goals={linkedGoals}
-          relations={projectRelations}
-          onOpenNode={handleOpenRelationNode}
+        if (attachment) {
+          openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+        }
+      }} onDeleteFile={handleDeleteAttachment} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+
+      {activeTab === 'relations' ? <ProjectRelationsTab project={project} sections={projectSections} blocks={projectSectionBlocks} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} goals={relationGoals} relations={projectRelations} workspaceBlocks={workspaceBlocks} workspaceRelations={workspaceRelationsForProject} onOpenNode={handleOpenRelationNode} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} onDeleteRelation={handleDeleteRelation} onSelectRelation={setSelectedRelationId} /> : null}
+
+      {activeTab === 'activity' ? <ProjectActivityTab activities={projectActivityFeed} /> : null}
+
+      {activeTab === 'settings' ? <ProjectSettingsTab project={project} tagSuggestions={projectTagSuggestions} onSave={handleSaveProjectSettings} onDelete={handleDeleteProject} /> : null}
+
+      <ProjectAddElementSheet
+        isOpen={isAddElementSheetOpen}
+        onClose={() => setIsAddElementSheetOpen(false)}
+        onCreateElement={(type) => {
+          setIsAddElementSheetOpen(false)
+
+          if (type === 'image' || type === 'file' || type === 'link') {
+            openAttachmentUploader(type)
+            return
+          }
+
+          handleCreateWorkspaceBlock(type)
+        }}
+      />
+
+      {attachmentEditor ? (
+        <ProjectAttachmentUploader
+          isOpen={Boolean(attachmentEditor)}
+          mode={attachmentEditor.mode}
+          attachment={editedAttachment}
+          onClose={closeAttachmentUploader}
+          onSubmit={(values) => {
+            if (attachmentEditor.attachmentId) {
+              handleUpdateAttachment(attachmentEditor.attachmentId, values)
+            } else {
+              handleCreateAttachment(values)
+            }
+
+            closeAttachmentUploader()
+          }}
         />
       ) : null}
 
-      {isEditModalOpen ? (
-        <ProjectFormModal
-          mode="edit"
-          project={project}
-          relatedItems={selectedProjectRelations}
-          availableRelationItems={availableRelationItems}
-          onOpenRelatedItem={(item) => navigate(getLinkedItemPath(item))}
-          onClose={() => setIsEditModalOpen(false)}
-          onSubmit={handleUpdateProject}
-        />
-      ) : null}
+      <ProjectAddRelationSheet
+        isOpen={isAddRelationSheetOpen}
+        onClose={() => {
+          setIsAddRelationSheetOpen(false)
+          setRelationDraft(null)
+          setRelationSourceBlockId(null)
+          setActiveTool('select')
+        }}
+        blocks={workspaceBlocks}
+        initialFromBlockId={relationDraft?.fromBlockId}
+        initialToBlockId={relationDraft?.toBlockId}
+        initialType={relationDraft?.type}
+        initialLabel={relationDraft?.label}
+        existingRelations={workspaceRelationsForProject}
+        submitLabel={selectedRelationId ? 'Сохранить тип связи' : 'Создать связь'}
+        onSubmit={({ fromBlockId, toBlockId, type, label }) => {
+          handleCreateRelation(fromBlockId, toBlockId, type, label)
+          setRelationDraft(null)
+          setIsAddRelationSheetOpen(false)
+        }}
+      />
     </section>
   )
 }

@@ -104,8 +104,8 @@ export function ProjectSectionList({
     <aside className="ui-panel p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Sections</p>
-          <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Подразделы проекта</h2>
+          <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Разделы</p>
+          <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Разделы проекта</h2>
         </div>
 
         <button
@@ -132,59 +132,58 @@ export function ProjectSectionList({
         }`}
       >
         <span>Все блоки</span>
-        <span className="text-xs uppercase tracking-[0.16em]">ALL</span>
+        <span className="text-xs text-(--text-muted)">Общий поток</span>
       </button>
 
       <div className="mt-4 space-y-3">
-        {sections.map((section) => (
+        {sections.length > 0 ? sections.map((section) => (
           <div key={section.id} className="rounded-3xl border border-(--border-soft) bg-(--panel-elevated) p-4">
-            <button
-              type="button"
-              onClick={() => onSelectSection(section.id)}
-              className={`w-full rounded-xl px-3 py-3 text-left transition-colors duration-200 ${
-                activeSectionId === section.id ? 'bg-(--accent-soft) text-(--text-primary)' : 'text-(--text-secondary) hover:bg-black/10 hover:text-(--text-primary)'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-inherit">{section.title}</p>
-                  <p className="mt-1 text-sm text-(--text-muted)">{section.description || 'Без описания'}</p>
-                </div>
-                <span className="ui-chip text-xs">{blockCounts[section.id] ?? 0}</span>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-(--text-primary)">{section.title}</p>
+                <p className="mt-1 text-sm text-(--text-muted)">{section.description || 'Описание раздела пока не добавлено.'}</p>
+                <p className="mt-3 text-xs text-(--text-muted)">Блоков: {blockCounts[section.id] ?? 0}</p>
               </div>
-            </button>
+              <details className="shrink-0">
+                <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-secondary)">
+                  ...
+                </summary>
+                <div className="mt-2 flex min-w-36 flex-col gap-2 rounded-2xl border border-(--border-soft) bg-(--panel) p-2">
+                  <button type="button" onClick={() => startEdit(section)} className="ui-button px-3 py-2 text-xs">Редактировать</button>
+                  <button type="button" onClick={() => onDeleteSection(section)} className="ui-button-danger px-3 py-2 text-xs">Удалить</button>
+                </div>
+              </details>
+            </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => startEdit(section)}
-                className="ui-button px-3 py-2 text-xs"
+                onClick={() => onSelectSection(section.id)}
+                className={`ui-button px-3 py-2 text-xs ${activeSectionId === section.id ? 'border-(--accent-border) text-(--accent)' : ''}`}
               >
-                Изменить
-              </button>
-              <button
-                type="button"
-                onClick={() => onDeleteSection(section)}
-                className="ui-button-danger px-3 py-2 text-xs"
-              >
-                Удалить
+                Открыть
               </button>
             </div>
           </div>
-        ))}
+        )) : (
+          <div className="rounded-3xl border border-dashed border-(--border-soft) bg-(--panel-elevated) p-5 text-sm text-(--text-muted)">
+            <p className="font-medium text-(--text-primary)">Разделы пока не созданы.</p>
+            <p className="mt-2">Разбейте проект на логические части: исследование, задачи, материалы, решения.</p>
+          </div>
+        )}
       </div>
 
       {(isCreating || editingSectionId) ? (
         <form onSubmit={handleSubmit} className="mt-5 space-y-3 rounded-3xl border border-(--border-soft) bg-(--panel-elevated) p-4">
           <div>
-            <p className="text-sm font-medium text-(--text-primary)">{editingSectionId ? 'Редактирование подраздела' : 'Новый подраздел'}</p>
-            <p className="mt-1 text-xs text-(--text-muted)">Подразделы управляют структурой рабочей поверхности проекта.</p>
+            <p className="text-sm font-medium text-(--text-primary)">{editingSectionId ? 'Редактирование раздела' : 'Новый раздел'}</p>
+            <p className="mt-1 text-xs text-(--text-muted)">Разделы помогают разложить рабочую область по логическим потокам.</p>
           </div>
 
           <input
             value={draft.title}
             onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
-            placeholder="Название подраздела"
+            placeholder="Название раздела"
             className="ui-input"
           />
 
@@ -192,7 +191,7 @@ export function ProjectSectionList({
             value={draft.description}
             onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
             rows={3}
-            placeholder="Короткое описание подраздела"
+            placeholder="Короткое описание раздела"
             className="ui-input min-h-28 resize-y"
           />
 

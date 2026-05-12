@@ -79,7 +79,7 @@ export function ReminderList({
                   <button
                     type="button"
                     onClick={() => onToggleComplete(reminder)}
-                    className="min-h-11 rounded-2xl border border-[#d7e8dc] bg-[#ebf7ef] px-3 py-2 text-sm font-medium text-[#37734f] transition-all duration-200 active:scale-[0.98]"
+                    className="min-h-11 rounded-2xl border border-(--completed-border) bg-(--completed-bg) px-3 py-2 text-sm font-medium text-(--completed-text) transition-all duration-200 active:scale-[0.98]"
                   >
                     {reminder.completed ? 'Снять выполнение' : 'Отметить выполненным'}
                   </button>

@@ -30,13 +30,37 @@ export function NoteCard({
   onEdit,
   onDelete,
 }: NoteCardProps) {
-  const excerpt = note.content.length > 180 ? `${note.content.slice(0, 180)}...` : note.content
+  const previewText = note.summary || note.content
+  const excerpt = previewText.length > 180 ? `${previewText.slice(0, 180)}...` : previewText
+
+  const typeLabels: Record<Note['type'], string> = {
+    basic: 'Обычная',
+    research: 'Исследование',
+    instruction: 'Инструкция',
+    project_material: 'Материал проекта',
+    personal_thought: 'Личная мысль',
+    solution: 'Решение',
+    list: 'Список',
+    reference: 'Справка',
+  }
+
+  const statusLabels: Record<Note['status'], string> = {
+    draft: 'Черновик',
+    active: 'В работе',
+    completed: 'Готово',
+    archived: 'Архив',
+  }
 
   return (
     <article className="ui-panel ui-card-hover p-5 md:p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold text-(--text-primary)">{note.title}</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="ui-chip">{typeLabels[note.type]}</span>
+            <span className="ui-chip">{statusLabels[note.status]}</span>
+            {note.category ? <span className="ui-chip">{note.category}</span> : null}
+          </div>
           <p className="mt-2 text-sm leading-6 text-(--text-muted)">{excerpt || 'Текст заметки пока не добавлен.'}</p>
         </div>
 

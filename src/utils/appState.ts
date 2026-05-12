@@ -1,5 +1,6 @@
 import defaultSettings from '../data/defaultSettings'
 import { getStorageItem, setStorageItem, storageKeys } from './storage'
+import { isRecord, normalizeAppState } from './safe'
 
 export const APP_STATE_STORAGE_MAP = {
   tasks: storageKeys.tasks,
@@ -8,11 +9,17 @@ export const APP_STATE_STORAGE_MAP = {
   projects: storageKeys.projects,
   project_sections: storageKeys.projectSections,
   files: storageKeys.files,
+  projectAttachments: storageKeys.projectAttachments,
   goals: storageKeys.goals,
+  projectGoals: storageKeys.projectGoals,
+  projectMilestones: storageKeys.projectMilestones,
+  project_activities: storageKeys.projectActivities,
   relations: storageKeys.relations,
   calendar_events: storageKeys.calendarEvents,
   reminders: storageKeys.reminders,
   settings: storageKeys.appSettings,
+  projectWorkspaceBlocks: storageKeys.projectWorkspaceBlocks,
+  projectWorkspaceRelations: storageKeys.projectWorkspaceRelations,
 } as const
 
 type AppStateKey = keyof typeof APP_STATE_STORAGE_MAP
@@ -26,11 +33,17 @@ const APP_STATE_DEFAULTS: FullLocalAppState = {
   projects: [],
   project_sections: [],
   files: [],
+  projectAttachments: [],
   goals: [],
+  projectGoals: [],
+  projectMilestones: [],
+  project_activities: [],
   relations: [],
   calendar_events: [],
   reminders: [],
   settings: defaultSettings,
+  projectWorkspaceBlocks: [],
+  projectWorkspaceRelations: [],
 }
 
 const CONTENT_KEYS: AppStateKey[] = [
@@ -40,7 +53,13 @@ const CONTENT_KEYS: AppStateKey[] = [
   'projects',
   'project_sections',
   'files',
+  'projectAttachments',
   'goals',
+  'projectGoals',
+  'projectMilestones',
+  'project_activities',
+  'projectWorkspaceBlocks',
+  'projectWorkspaceRelations',
   'relations',
   'calendar_events',
   'reminders',
@@ -58,12 +77,8 @@ function hasMeaningfulValue(value: unknown) {
   return Boolean(value)
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 export function getFullLocalAppState(): FullLocalAppState {
-  return (Object.keys(APP_STATE_STORAGE_MAP) as AppStateKey[]).reduce<FullLocalAppState>(
+  const rawState = (Object.keys(APP_STATE_STORAGE_MAP) as AppStateKey[]).reduce<FullLocalAppState>(
     (accumulator, appStateKey) => {
       const storageKey = APP_STATE_STORAGE_MAP[appStateKey]
       accumulator[appStateKey] = getStorageItem(storageKey, APP_STATE_DEFAULTS[appStateKey])
@@ -71,10 +86,12 @@ export function getFullLocalAppState(): FullLocalAppState {
     },
     { ...APP_STATE_DEFAULTS },
   )
+
+  return normalizeAppState(rawState) as FullLocalAppState
 }
 
 export function restoreFullLocalAppState(data: unknown) {
-  const source = isObject(data) ? data : {}
+  const source = normalizeAppState(data)
 
   for (const appStateKey of Object.keys(APP_STATE_STORAGE_MAP) as AppStateKey[]) {
     const storageKey = APP_STATE_STORAGE_MAP[appStateKey]
@@ -86,7 +103,7 @@ export function restoreFullLocalAppState(data: unknown) {
 }
 
 export function hasMeaningfulAppState(data: unknown) {
-  const source = isObject(data) ? data : {}
+  const source = isRecord(data) ? data : {}
 
   return CONTENT_KEYS.some((key) => hasMeaningfulValue(source[key]))
 }

@@ -17,7 +17,7 @@ export function MobileFab() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-(--accent) text-3xl leading-none text-white shadow-[0_14px_26px_rgba(57,39,255,0.35)] md:hidden"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-(--accent) text-3xl leading-none text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] md:hidden"
         aria-label="Быстрое добавление"
       >
         +

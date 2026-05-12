@@ -13,11 +13,11 @@ import { storageKeys } from '../utils/storage'
 type ProjectFilter = 'all' | 'active' | 'paused' | 'completed' | 'archived'
 
 const filterLabels: Record<ProjectFilter, string> = {
-  all: 'All',
-  active: 'Active',
-  paused: 'Paused',
-  completed: 'Completed',
-  archived: 'Archived',
+  all: 'Все',
+  active: 'Активные',
+  paused: 'На паузе',
+  completed: 'Завершённые',
+  archived: 'Архив',
 }
 
 function toDeadlineValue(value: string) {
@@ -35,9 +35,14 @@ function buildProject(values: ProjectFormValues, existingProject?: Project): Pro
     id: existingProject?.id ?? crypto.randomUUID(),
     title: values.title,
     description: values.description,
+    details: existingProject?.details ?? '',
+    tags: existingProject?.tags ?? [],
     status: values.status,
+    priority: existingProject?.priority ?? 'medium',
     goal: values.goal,
     deadline: toDeadlineValue(values.deadline),
+    color: existingProject?.color ?? '',
+    icon: existingProject?.icon ?? '',
     createdAt: existingProject?.createdAt ?? timestamp,
     updatedAt: timestamp,
     sectionIds: existingProject?.sectionIds ?? [],
@@ -51,10 +56,11 @@ function buildProject(values: ProjectFormValues, existingProject?: Project): Pro
 
 function compareProjects(a: Project, b: Project) {
   const statusRank = {
+    planning: 0,
     active: 0,
-    paused: 1,
-    completed: 2,
-    archived: 3,
+    paused: 2,
+    completed: 3,
+    archived: 4,
   }
 
   if (statusRank[a.status] !== statusRank[b.status]) {
@@ -94,6 +100,7 @@ export function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<ProjectFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const editingProject = useMemo(
     () => projects.find((project) => project.id === editingProjectId) ?? null,
@@ -103,12 +110,18 @@ export function ProjectsPage() {
   const sortedProjects = useMemo(() => [...projects].sort(compareProjects), [projects])
 
   const filteredProjects = useMemo(() => {
-    if (activeFilter === 'all') {
-      return sortedProjects
+    const byStatus = activeFilter === 'all'
+      ? sortedProjects
+      : sortedProjects.filter((project) => project.status === activeFilter)
+
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+
+    if (!normalizedQuery) {
+      return byStatus
     }
 
-    return sortedProjects.filter((project) => project.status === activeFilter)
-  }, [activeFilter, sortedProjects])
+    return byStatus.filter((project) => [project.title, project.description, ...(project.tags ?? [])].join(' ').toLowerCase().includes(normalizedQuery))
+  }, [activeFilter, searchQuery, sortedProjects])
 
   const projectCounts = useMemo(() => {
     return Object.fromEntries(
@@ -203,6 +216,7 @@ export function ProjectsPage() {
         description: '',
         status: 'active',
         goal: '',
+        tags: [],
         deadline: null,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -266,7 +280,7 @@ export function ProjectsPage() {
       <header className="ui-panel p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-(--text-muted)">Project Control</p>
+            <p className="text-xs uppercase tracking-[0.26em] text-(--text-muted)">Проекты</p>
             <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Проекты</h1>
             <p className="page-description mt-2 max-w-3xl text-sm text-(--text-muted) md:text-base">
               Главная рабочая поверхность Life OS. Здесь создаются проекты, формируется контекст, а затем каждый проект раскрывается в отдельное рабочее пространство.
@@ -312,13 +326,24 @@ export function ProjectsPage() {
               className={[
                 'ui-filter-pill',
                 activeFilter === filter
-                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-[0_6px_18px_rgba(57,39,255,0.12)]'
+                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
                   : 'hover:border-(--accent-border) hover:text-(--text-primary)',
               ].join(' ')}
             >
               {filterLabels[filter]}
             </button>
           ))}
+        </div>
+
+        <div className="mt-4">
+          <label className="text-sm text-(--text-secondary)" htmlFor="projects-search">Поиск по названию, описанию и тегам</label>
+          <input
+            id="projects-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="ui-input mt-2"
+            placeholder="Например, запуск, личный, исследование"
+          />
         </div>
       </section>
 

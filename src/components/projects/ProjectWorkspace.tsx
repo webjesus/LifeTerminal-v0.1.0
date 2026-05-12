@@ -1,426 +1,650 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import type { Project, ProjectSection } from '../../types'
-import type { RelationSelectableItem } from '../../utils/relations'
-import { ProjectBlockModal, type ProjectBlockEditorValues } from './ProjectBlockModal'
-import { workspaceItemKindBadges, workspaceItemKindLabels, type WorkspaceItemKind } from './projectMeta'
-
-export type ProjectWorkspaceItemFormValues = {
-  kind: WorkspaceItemKind
-  title: string
-  description: string
-  content: string
-  url: string
-  sectionId: string | null
-}
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { Project, ProjectSection, ProjectWorkspaceBlock, ProjectWorkspaceRelation } from '../../types'
+import { cn } from '../../utils/cn'
+import { ProjectWorkspaceBlock as WorkspaceCard } from './ProjectWorkspaceBlock'
+import { projectWorkspaceRelationLabels } from './projectMeta'
 
 type ProjectWorkspaceProps = {
   project: Project
   sections: ProjectSection[]
-  blocks: ProjectSection[]
-  activeSectionId: string | null
+  workspaceBlocks: ProjectWorkspaceBlock[]
+  activeSectionFilter: string
   selectedBlockId?: string | null
-  onSelectedBlockChange?: (blockId: string | null) => void
-  selectedBlockRelatedItems: RelationSelectableItem[]
-  availableRelationItems: RelationSelectableItem[]
-  onOpenRelatedItem: (item: RelationSelectableItem) => void
-  onAddItem: (values: ProjectWorkspaceItemFormValues) => void
-  onUpdateBlock: (block: ProjectSection, values: ProjectBlockEditorValues) => void
-  onDeleteBlock: (block: ProjectSection) => void
+  selectedRelationId?: string | null
+  activeTool?: string
+  relationSourceBlockId?: string | null
+  relationNotice?: string | null
+  onSelectBlock?: (blockId: string | null) => void
+  onSelectSectionFilter?: (sectionId: string) => void
+  onCreateBlock?: (type: ProjectWorkspaceBlock['type']) => void
+  onOpenAddElement?: () => void
+  onUpdateBlock?: (blockId: string, updates: Partial<ProjectWorkspaceBlock>) => void
+  onArrangeBlocks?: (positions: Array<{ id: string; x: number; y: number }>) => void
+  workspaceRelations?: ProjectWorkspaceRelation[]
 }
 
-const initialFormState: ProjectWorkspaceItemFormValues = {
-  kind: 'task',
-  title: '',
-  description: '',
-  content: '',
-  url: '',
-  sectionId: null,
-}
+const DEFAULT_BLOCK_WIDTH = 280
+const MIN_BLOCK_WIDTH = 260
+const MAX_BLOCK_WIDTH = 360
+const GRID_CARD_WIDTH = 300
+const GRID_CARD_HEIGHT = 160
+const GRID_GAP = 24
+const GRID_PADDING = 24
 
-function getBlockSurfaceLabel(kind: WorkspaceItemKind) {
-  switch (kind) {
-    case 'task':
-      return 'Задача'
-    case 'note':
-      return 'Заметка'
-    case 'idea':
-      return 'Идея'
-    case 'goal':
-      return 'Цель'
-    case 'file':
-      return 'Файл'
-    case 'photo':
-      return 'Фото'
-    case 'link':
-      return 'Ссылка'
-    case 'text':
-      return 'Текст'
-    case 'thought':
-      return 'Мысль'
-    default:
-      return 'Блок'
-  }
-}
+const EMPTY_STATE_ACTIONS: Array<{ type: ProjectWorkspaceBlock['type']; label: string }> = [
+  { type: 'text', label: 'Добавить текст' },
+  { type: 'task', label: 'Добавить задачу' },
+  { type: 'idea', label: 'Добавить идею' },
+  { type: 'note', label: 'Добавить заметку' },
+  { type: 'file', label: 'Добавить файл' },
+]
 
 export function ProjectWorkspace({
   project,
   sections,
-  blocks,
-  activeSectionId,
-  selectedBlockId: controlledSelectedBlockId,
-  onSelectedBlockChange,
-  selectedBlockRelatedItems,
-  availableRelationItems,
-  onOpenRelatedItem,
-  onAddItem,
+  workspaceBlocks,
+  activeSectionFilter,
+  selectedBlockId,
+  selectedRelationId,
+  activeTool,
+  relationSourceBlockId,
+  relationNotice,
+  onSelectBlock,
+  onSelectSectionFilter,
+  onCreateBlock,
+  onOpenAddElement,
   onUpdateBlock,
-  onDeleteBlock,
+  onArrangeBlocks,
+  workspaceRelations = [],
 }: ProjectWorkspaceProps) {
-  const [formState, setFormState] = useState<ProjectWorkspaceItemFormValues>(initialFormState)
-  const [internalSelectedBlockId, setInternalSelectedBlockId] = useState<string | null>(null)
-
-  const selectedBlockId = controlledSelectedBlockId ?? internalSelectedBlockId
-
-  const selectedBlock = useMemo(
-    () => blocks.find((block) => block.id === selectedBlockId) ?? null,
-    [blocks, selectedBlockId],
+  const canvasRef = useRef<HTMLDivElement | null>(null)
+  const blocks = useMemo(
+    () => workspaceBlocks.filter((block) => block.projectId === project.id),
+    [project.id, workspaceBlocks],
   )
+  const sectionTitleMap = useMemo(() => new Map(sections.map((section) => [section.id, section.title])), [sections])
 
-  function openBlock(blockId: string) {
-    if (controlledSelectedBlockId === undefined) {
-      setInternalSelectedBlockId(blockId)
-    }
+  const [isMobile, setIsMobile] = useState(false)
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null)
+  const [resizingBlockId, setResizingBlockId] = useState<string | null>(null)
+  const [temporaryPositions, setTemporaryPositions] = useState<Record<string, { x: number; y: number }>>({})
+  const [temporarySizes, setTemporarySizes] = useState<Record<string, { width: number; height: number }>>({})
+  const [dragState, setDragState] = useState<{
+    blockId: string
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  } | null>(null)
+  const [resizeState, setResizeState] = useState<{
+    blockId: string
+    pointerId: number
+    startX: number
+    startY: number
+    originWidth: number
+    originHeight: number
+  } | null>(null)
 
-    onSelectedBlockChange?.(blockId)
-  }
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth < 1024)
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
 
-  function closeBlock() {
-    if (controlledSelectedBlockId === undefined) {
-      setInternalSelectedBlockId(null)
-    }
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
 
-    onSelectedBlockChange?.(null)
-  }
+  useEffect(() => {
+    setTemporaryPositions((currentPositions) => {
+      const validIds = new Set(blocks.map((block) => block.id))
+      const nextEntries = Object.entries(currentPositions).filter(([blockId]) => validIds.has(blockId))
 
-  const sectionMap = useMemo(
-    () => Object.fromEntries(sections.map((section) => [section.id, section])),
-    [sections],
-  )
-
-  const visibleBlocks = useMemo(() => {
-    if (activeSectionId) {
-      return blocks.filter((block) => block.parentSectionId === activeSectionId)
-    }
-
-    return blocks
-  }, [activeSectionId, blocks])
-
-  const orderedBlocks = useMemo(
-    () =>
-      [...visibleBlocks].sort((a, b) => {
-        const sectionA = a.parentSectionId ? sectionMap[a.parentSectionId]?.title ?? '' : ''
-        const sectionB = b.parentSectionId ? sectionMap[b.parentSectionId]?.title ?? '' : ''
-
-        if (sectionA !== sectionB) {
-          return sectionA.localeCompare(sectionB, 'ru')
-        }
-
-        if (a.order !== b.order) {
-          return a.order - b.order
-        }
-
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      }),
-    [sectionMap, visibleBlocks],
-  )
-
-  function resetForm() {
-    setFormState({
-      ...initialFormState,
-      sectionId: activeSectionId,
+      return nextEntries.length === Object.keys(currentPositions).length
+        ? currentPositions
+        : Object.fromEntries(nextEntries)
     })
+    setTemporarySizes((currentSizes) => {
+      const validIds = new Set(blocks.map((block) => block.id))
+      const nextEntries = Object.entries(currentSizes).filter(([blockId]) => validIds.has(blockId))
+
+      return nextEntries.length === Object.keys(currentSizes).length
+        ? currentSizes
+        : Object.fromEntries(nextEntries)
+    })
+  }, [blocks])
+
+  useEffect(() => {
+    if (isMobile) {
+      setDraggingBlockId(null)
+      setResizingBlockId(null)
+      setDragState(null)
+      setResizeState(null)
+      setTemporaryPositions({})
+      setTemporarySizes({})
+    }
+  }, [isMobile])
+
+  function handleCreate(type: ProjectWorkspaceBlock['type']) {
+    onCreateBlock?.(type)
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function getGridPosition(index: number, canvasWidth?: number) {
+    const safeCanvasWidth = Math.max(canvasWidth ?? canvasRef.current?.clientWidth ?? 0, GRID_CARD_WIDTH + GRID_GAP + GRID_PADDING * 2)
+    const columns = Math.max(1, Math.floor((safeCanvasWidth - GRID_PADDING * 2) / (GRID_CARD_WIDTH + GRID_GAP)))
+    const column = index % columns
+    const row = Math.floor(index / columns)
 
-    const title = formState.title.trim()
+    return {
+      x: GRID_PADDING + column * (GRID_CARD_WIDTH + GRID_GAP),
+      y: GRID_PADDING + row * (GRID_CARD_HEIGHT + GRID_GAP),
+    }
+  }
 
-    if (!title) {
+  useEffect(() => {
+    if (isMobile) {
       return
     }
 
-    onAddItem({
-      ...formState,
-      title,
-      description: formState.description.trim(),
-      content: formState.content.trim(),
-      url: formState.url.trim(),
+    const fallbackCanvasWidth = Math.max(canvasRef.current?.clientWidth ?? 0, window.innerWidth - 560, 960)
+
+    blocks.forEach((block, index) => {
+      const fallbackPosition = getGridPosition(index, fallbackCanvasWidth)
+      const nextX = typeof block.x === 'number' ? Math.max(GRID_PADDING, block.x) : fallbackPosition.x
+      const nextY = typeof block.y === 'number' ? Math.max(GRID_PADDING, block.y) : fallbackPosition.y
+      const nextWidth = typeof block.width === 'number' && block.width >= 240
+        ? Math.min(MAX_BLOCK_WIDTH, Math.max(MIN_BLOCK_WIDTH, block.width))
+        : DEFAULT_BLOCK_WIDTH
+
+      if (nextX !== block.x || nextY !== block.y || nextWidth !== block.width) {
+        onUpdateBlock?.(block.id, {
+          x: nextX,
+          y: nextY,
+          width: nextWidth,
+        })
+      }
+    })
+  }, [blocks, isMobile, onUpdateBlock])
+
+  const resolvedBlocks = useMemo(
+    () => blocks.map((block, index) => {
+      const fallbackPosition = getGridPosition(index)
+      const savedX = typeof block.x === 'number' ? Math.max(GRID_PADDING, block.x) : fallbackPosition.x
+      const savedY = typeof block.y === 'number' ? Math.max(GRID_PADDING, block.y) : fallbackPosition.y
+      const transientPosition = temporaryPositions[block.id]
+      const transientSize = temporarySizes[block.id]
+      const resolvedWidth = typeof block.width === 'number' && block.width >= 240
+        ? Math.min(MAX_BLOCK_WIDTH, Math.max(MIN_BLOCK_WIDTH, block.width))
+        : DEFAULT_BLOCK_WIDTH
+      const resolvedHeight = typeof block.height === 'number' && block.height >= 160
+        ? block.height
+        : block.type === 'image'
+          ? 240
+          : undefined
+
+      return {
+        ...block,
+        x: transientPosition?.x ?? savedX,
+        y: transientPosition?.y ?? savedY,
+        width: transientSize?.width ?? resolvedWidth,
+        height: transientSize?.height ?? resolvedHeight,
+      }
+    }),
+    [blocks, temporaryPositions, temporarySizes],
+  )
+
+  const filteredBlocks = useMemo(() => {
+    if (activeSectionFilter === 'all') {
+      return resolvedBlocks
+    }
+
+    if (activeSectionFilter === 'none') {
+      return resolvedBlocks.filter((block) => !block.sectionId)
+    }
+
+    return resolvedBlocks.filter((block) => block.sectionId === activeSectionFilter)
+  }, [activeSectionFilter, resolvedBlocks])
+
+  const canvasHeight = useMemo(() => {
+    if (isMobile) {
+      return undefined
+    }
+
+    const maxBottom = filteredBlocks.reduce((maxValue, block) => {
+      const nextBottom = (block.y ?? 0) + (block.height ?? 160)
+      return Math.max(maxValue, nextBottom)
+    }, 0)
+
+    return Math.max(640, maxBottom + 120)
+  }, [filteredBlocks, isMobile])
+
+  const blockById = useMemo(
+    () => new Map(filteredBlocks.map((block) => [block.id, block])),
+    [filteredBlocks],
+  )
+
+  const mobileRelationMap = useMemo(() => {
+    const relationMap: Record<string, Array<{ id: string; typeLabel: string; directionLabel: string; otherTitle: string }>> = {}
+
+    workspaceRelations.forEach((relation) => {
+      const fromBlock = blockById.get(relation.fromBlockId)
+      const toBlock = blockById.get(relation.toBlockId)
+      const typeLabel = projectWorkspaceRelationLabels[relation.type]
+
+      if (fromBlock) {
+        relationMap[fromBlock.id] = [
+          ...(relationMap[fromBlock.id] ?? []),
+          { id: `${relation.id}:out`, typeLabel, directionLabel: 'Исходящая', otherTitle: toBlock?.title ?? 'Блок удалён' },
+        ]
+      }
+
+      if (toBlock) {
+        relationMap[toBlock.id] = [
+          ...(relationMap[toBlock.id] ?? []),
+          { id: `${relation.id}:in`, typeLabel, directionLabel: 'Входящая', otherTitle: fromBlock?.title ?? 'Блок удалён' },
+        ]
+      }
     })
 
-    resetForm()
+    return relationMap
+  }, [blockById, workspaceRelations])
+
+  const relationSummaryMap = useMemo(() => {
+    const summaryMap: Record<string, { total: number; items: Array<{ typeLabel: string; count: number }> }> = {}
+
+    workspaceRelations.forEach((relation) => {
+      const blockIds = [relation.fromBlockId, relation.toBlockId]
+
+      blockIds.forEach((blockId) => {
+        const current = summaryMap[blockId] ?? { total: 0, items: [] }
+        const typeLabel = projectWorkspaceRelationLabels[relation.type]
+        const existingItem = current.items.find((item) => item.typeLabel === typeLabel)
+
+        if (existingItem) {
+          existingItem.count += 1
+        } else {
+          current.items.push({ typeLabel, count: 1 })
+        }
+
+        current.total += 1
+        summaryMap[blockId] = current
+      })
+    })
+
+    return summaryMap
+  }, [workspaceRelations])
+
+  const resolvedRelations = useMemo(
+    () => workspaceRelations
+      .map((relation) => {
+        const fromBlock = blockById.get(relation.fromBlockId)
+        const toBlock = blockById.get(relation.toBlockId)
+
+        if (!fromBlock || !toBlock) {
+          return null
+        }
+
+        const fromWidth = fromBlock.width ?? 280
+        const fromHeight = fromBlock.height ?? 160
+        const toWidth = toBlock.width ?? 280
+        const toHeight = toBlock.height ?? 160
+
+        return {
+          ...relation,
+          fromX: (fromBlock.x ?? 0) + fromWidth / 2,
+          fromY: (fromBlock.y ?? 0) + fromHeight / 2,
+          toX: (toBlock.x ?? 0) + toWidth / 2,
+          toY: (toBlock.y ?? 0) + toHeight / 2,
+        }
+      })
+      .filter((relation): relation is NonNullable<typeof relation> => relation !== null),
+    [blockById, workspaceRelations],
+  )
+
+  function clampPosition(x: number, y: number, blockWidth = DEFAULT_BLOCK_WIDTH) {
+    const canvasWidth = canvasRef.current?.clientWidth ?? 1200
+    const canvasHeightValue = canvasRef.current?.clientHeight ?? 800
+    const maxX = Math.max(GRID_PADDING, canvasWidth - blockWidth - GRID_PADDING)
+    const maxY = Math.max(GRID_PADDING, canvasHeightValue - GRID_CARD_HEIGHT)
+
+    return {
+      x: Math.min(Math.max(GRID_PADDING, x), maxX),
+      y: Math.min(Math.max(GRID_PADDING, y), maxY),
+    }
   }
 
-  function renderBlock(block: ProjectSection) {
-    const badge = workspaceItemKindBadges[block.kind as WorkspaceItemKind]
-    const sectionTitle = block.parentSectionId ? sectionMap[block.parentSectionId]?.title ?? 'Подраздел' : 'Без подраздела'
+  function handleDragStart(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (isMobile) {
+      return
+    }
 
-    return (
-      <article key={block.id} className="ui-panel ui-card-hover group overflow-hidden">
-        <button
-          type="button"
-          onClick={() => openBlock(block.id)}
-          className="w-full text-left"
-        >
-          <div className="space-y-4 p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.16em] ${badge.className}`}>
-                {badge.shortLabel}
-              </span>
-              <span className="ui-chip text-[11px] uppercase tracking-[0.16em]">
-                {sectionTitle}
-              </span>
-            </div>
+    const activeBlock = resolvedBlocks.find((block) => block.id === blockId)
 
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{getBlockSurfaceLabel(block.kind as WorkspaceItemKind)}</p>
-              <h4 className="mt-2 text-xl font-semibold text-(--text-primary)">{block.title}</h4>
-            </div>
+    if (!activeBlock) {
+      return
+    }
 
-            {block.kind === 'photo' && block.url ? (
-              <div className="overflow-hidden rounded-2xl border border-(--border)">
-                <img src={block.url} alt={block.title} className="h-44 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
-              </div>
-            ) : null}
-
-            <p className="line-clamp-4 min-h-18 text-sm leading-6 text-(--text-secondary)">{block.description || block.content || 'Детали пока не заполнены.'}</p>
-
-            {block.content && block.kind !== 'photo' ? (
-              <p className="line-clamp-3 text-sm text-(--text-muted)">{block.content}</p>
-            ) : null}
-
-            {block.url ? (
-              <p className="truncate text-sm text-(--accent)">{block.url}</p>
-            ) : null}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="ui-panel-elevated px-3 py-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Связи</p>
-                <p className="mt-2 text-lg font-semibold text-(--text-primary)">{block.relatedBlockIds.length}</p>
-              </div>
-              <div className="ui-panel-elevated px-3 py-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Фокус</p>
-                <p className="mt-2 text-sm font-medium text-(--text-primary)">{sectionTitle}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-(--border-soft) pt-3 text-sm">
-              <span className="text-(--text-muted)">Открыть детали</span>
-              <span className="font-medium text-(--accent)">Редактировать</span>
-            </div>
-          </div>
-        </button>
-
-        <div className="flex gap-2 border-t border-(--border-soft) bg-(--panel-elevated) px-5 py-4">
-          <button
-            type="button"
-            onClick={() => openBlock(block.id)}
-            className="ui-button px-4 py-2"
-          >
-            Детали
-          </button>
-          <button
-            type="button"
-            onClick={() => onDeleteBlock(block)}
-            className="ui-button-danger px-4 py-2"
-          >
-            Удалить
-          </button>
-        </div>
-      </article>
-    )
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    onSelectBlock?.(blockId)
+    setDraggingBlockId(blockId)
+    setDragState({
+      blockId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: activeBlock.x ?? 0,
+      originY: activeBlock.y ?? 0,
+    })
   }
+
+  function handleDragMove(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!dragState || dragState.blockId !== blockId || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    const deltaX = event.clientX - dragState.startX
+    const deltaY = event.clientY - dragState.startY
+    const activeBlock = resolvedBlocks.find((block) => block.id === blockId)
+    const nextPosition = clampPosition(dragState.originX + deltaX, dragState.originY + deltaY, activeBlock?.width ?? DEFAULT_BLOCK_WIDTH)
+
+    setTemporaryPositions((currentPositions) => ({
+      ...currentPositions,
+      [blockId]: nextPosition,
+    }))
+  }
+
+  function handleDragEnd(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!dragState || dragState.blockId !== blockId || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const nextPosition = temporaryPositions[blockId] ?? {
+      x: dragState.originX,
+      y: dragState.originY,
+    }
+
+    onUpdateBlock?.(blockId, nextPosition)
+    setDraggingBlockId(null)
+    setDragState(null)
+    setTemporaryPositions((currentPositions) => {
+      const { [blockId]: _removed, ...rest } = currentPositions
+      return rest
+    })
+  }
+
+  function clampSize(width: number, height: number) {
+    const canvasWidth = canvasRef.current?.clientWidth ?? 1200
+    const canvasHeightValue = canvasRef.current?.clientHeight ?? 800
+
+    return {
+      width: Math.min(Math.max(220, width), Math.min(560, canvasWidth - GRID_PADDING * 2)),
+      height: Math.min(Math.max(180, height), Math.min(560, canvasHeightValue - GRID_PADDING * 2)),
+    }
+  }
+
+  function handleResizeStart(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (isMobile) {
+      return
+    }
+
+    const activeBlock = resolvedBlocks.find((block) => block.id === blockId)
+
+    if (!activeBlock) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    onSelectBlock?.(blockId)
+    setResizingBlockId(blockId)
+    setResizeState({
+      blockId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: activeBlock.width ?? DEFAULT_BLOCK_WIDTH,
+      originHeight: activeBlock.height ?? 240,
+    })
+  }
+
+  function handleResizeMove(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!resizeState || resizeState.blockId !== blockId || resizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    const deltaX = event.clientX - resizeState.startX
+    const deltaY = event.clientY - resizeState.startY
+    const nextSize = clampSize(resizeState.originWidth + deltaX, resizeState.originHeight + deltaY)
+
+    setTemporarySizes((currentSizes) => ({
+      ...currentSizes,
+      [blockId]: nextSize,
+    }))
+  }
+
+  function handleResizeEnd(blockId: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!resizeState || resizeState.blockId !== blockId || resizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const nextSize = temporarySizes[blockId] ?? {
+      width: resizeState.originWidth,
+      height: resizeState.originHeight,
+    }
+
+    onUpdateBlock?.(blockId, nextSize)
+    setResizingBlockId(null)
+    setResizeState(null)
+    setTemporarySizes((currentSizes) => {
+      const { [blockId]: _removed, ...rest } = currentSizes
+      return rest
+    })
+  }
+
+  function handleArrange() {
+    const canvasWidth = canvasRef.current?.clientWidth
+    const positions = resolvedBlocks.map((block, index) => ({
+      id: block.id,
+      ...getGridPosition(index, canvasWidth),
+    }))
+
+    onArrangeBlocks?.(positions)
+  }
+
+  function handleAddElement() {
+    if (onOpenAddElement) {
+      onOpenAddElement()
+      return
+    }
+
+    handleCreate('text')
+  }
+
+  const activeToolLabel = activeTool === 'select' || !activeTool ? 'Выбор' : activeTool
+  const hasFilter = activeSectionFilter !== 'all'
+  const filterEmpty = blocks.length > 0 && filteredBlocks.length === 0
 
   return (
-    <section className="space-y-6">
-      <div className="ui-panel p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Workspace</p>
-            <h1 className="mt-2 text-3xl font-semibold text-(--text-primary)">{project.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm text-(--text-muted) md:text-base">{project.description || 'Описание проекта пока не заполнено.'}</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-90">
-            <div className="ui-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Цель</p>
-              <p className="mt-2 text-sm text-(--text-primary)">{project.goal || 'Цель не задана'}</p>
-            </div>
-            <div className="ui-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Фокус</p>
-              <p className="mt-2 text-sm text-(--text-primary)">{activeSectionId ? sections.find((section) => section.id === activeSectionId)?.title ?? 'Подраздел' : 'Весь проект'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-5">
-          <div className="ui-panel-elevated p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Canvas</p>
-                <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Рабочая поверхность проекта</h2>
-                <p className="mt-2 text-sm text-(--text-muted)">
-                  {activeSectionId
-                    ? `Фильтр по подразделу: ${sectionMap[activeSectionId]?.title ?? 'Подраздел'}`
-                    : 'Показаны все блоки проекта. Откройте карточку, чтобы посмотреть детали, отредактировать содержимое и настроить связи.'}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="ui-panel px-4 py-3 shadow-none">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Карточек</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{orderedBlocks.length}</p>
-                </div>
-                <div className="ui-panel px-4 py-3 shadow-none">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Связей</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{orderedBlocks.reduce((total, block) => total + block.relatedBlockIds.length, 0)}</p>
-                </div>
-                <div className="ui-panel px-4 py-3 shadow-none">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Подразделы</p>
-                  <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{sections.length}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {orderedBlocks.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 3xl:grid-cols-3">
-              {orderedBlocks.map(renderBlock)}
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-dashed border-(--border) bg-(--panel) px-6 py-14 text-center">
-              <p className="text-sm uppercase tracking-[0.24em] text-(--text-muted)">Workspace</p>
-              <h3 className="mt-3 text-2xl font-semibold text-(--text-primary)">Рабочая поверхность пока пуста</h3>
-              <p className="mx-auto mt-3 max-w-2xl text-sm text-(--text-muted) md:text-base">
-                Добавьте первый блок справа. Каждый элемент сохранится в localStorage, откроется как отдельная карточка и сможет связываться с другими блоками проекта.
+    <section className="min-w-0 space-y-4">
+      <div className="ui-panel p-5 md:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Рабочая область</p>
+            <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Пространство блоков и связей</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-(--text-secondary)">
+              {isMobile
+                ? 'На mobile блоки отображаются вертикальной лентой без горизонтального переполнения.'
+                : 'На desktop центральный canvas занимает всё доступное пространство, а блоки можно свободно переставлять.'}
+            </p>
+            {activeTool === 'relation' ? (
+              <p className="mt-3 text-sm text-(--text-secondary)">
+                {relationSourceBlockId
+                  ? 'Режим связи: выберите второй блок и подтвердите тип связи.'
+                  : 'Режим связи: выберите первый блок, затем второй.'}
               </p>
-            </div>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} className="rounded-3xl border border-(--border) bg-(--panel) p-5 shadow-[0_16px_50px_rgba(0,0,0,0.16)] 2xl:sticky 2xl:top-6 2xl:self-start">
-          <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Add Item</p>
-          <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Добавить карточку</h2>
-
-          <div className="mt-5 space-y-4">
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">Тип блока</span>
-              <select
-                value={formState.kind}
-                onChange={(event) => setFormState((current) => ({ ...current, kind: event.target.value as WorkspaceItemKind }))}
-                className="ui-input"
-              >
-                {Object.entries(workspaceItemKindLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">Подраздел</span>
-              <select
-                value={formState.sectionId ?? ''}
-                onChange={(event) => setFormState((current) => ({ ...current, sectionId: event.target.value || null }))}
-                className="ui-input"
-              >
-                <option value="">Без подраздела</option>
-                {sections.map((section) => (
-                  <option key={section.id} value={section.id}>
-                    {section.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">Название</span>
-              <input
-                value={formState.title}
-                onChange={(event) => setFormState((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Название блока"
-                className="ui-input"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">Описание</span>
-              <textarea
-                value={formState.description}
-                onChange={(event) => setFormState((current) => ({ ...current, description: event.target.value }))}
-                rows={3}
-                placeholder="Контекст, краткое описание, следующий шаг"
-                className="ui-input min-h-28 resize-y"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">Содержимое / детали</span>
-              <textarea
-                value={formState.content}
-                onChange={(event) => setFormState((current) => ({ ...current, content: event.target.value }))}
-                rows={formState.kind === 'text' || formState.kind === 'thought' ? 6 : 4}
-                placeholder="Текст заметки, ссылка на следующий шаг, содержимое блока"
-                className="ui-input min-h-36 resize-y"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm text-(--text-secondary)">URL / путь</span>
-              <input
-                value={formState.url}
-                onChange={(event) => setFormState((current) => ({ ...current, url: event.target.value }))}
-                placeholder="Для файлов, фото и ссылок"
-                className="ui-input"
-              />
-            </label>
-
-            <div className="rounded-3xl border border-(--border-soft) bg-(--panel-elevated) p-4 text-sm text-(--text-muted)">
-              Связи между блоками настраиваются после создания: откройте карточку и выберите связанные элементы в детальном окне.
-            </div>
+            ) : null}
+            {relationNotice ? <p className="mt-2 text-sm text-(--accent)">{relationNotice}</p> : null}
           </div>
 
-          <button
-            type="submit"
-            className="ui-button-accent mt-5 w-full px-4 py-3"
-          >
-            Добавить {workspaceItemKindLabels[formState.kind].toLowerCase()}
-          </button>
-        </form>
+          <div className="flex flex-wrap items-start gap-3 lg:justify-end">
+            <div className="rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm text-(--text-secondary)">
+              <span className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Блоки</span>
+              <p className="mt-1 text-base font-semibold text-(--text-primary)">{filteredBlocks.length}{hasFilter ? <span className="text-sm font-normal text-(--text-muted)"> из {blocks.length}</span> : null}</p>
+            </div>
+            <div className="rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm text-(--text-secondary)">
+              <span className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Инструмент</span>
+              <p className="mt-1 text-base font-semibold text-(--text-primary)">{activeToolLabel}</p>
+            </div>
+            <button type="button" className="ui-button-accent px-4 py-3" onClick={handleAddElement}>
+              Добавить элемент
+            </button>
+            {!isMobile ? (
+              <button type="button" className="ui-button px-4 py-3" onClick={handleArrange}>
+                Упорядочить
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      {selectedBlock ? (
-        <ProjectBlockModal
-          key={selectedBlock.id}
-          block={selectedBlock}
-          sections={sections}
-          availableBlocks={blocks}
-          relatedItems={selectedBlockRelatedItems}
-          availableRelationItems={availableRelationItems}
-          onOpenRelatedItem={onOpenRelatedItem}
-          onClose={closeBlock}
-          onSave={(values) => {
-            onUpdateBlock(selectedBlock, values)
-            closeBlock()
-          }}
-          onDelete={(block) => {
-            onDeleteBlock(block)
-            closeBlock()
-          }}
-        />
+      {blocks.length === 0 ? (
+        <div className="ui-panel p-6">
+          <div className="rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) p-6 text-center">
+            <h2 className="text-xl font-semibold text-(--text-primary)">Рабочая область пустая</h2>
+            <p className="mt-2 text-sm text-(--text-muted)">Добавьте первый блок: задачу, идею, заметку, файл или текст.</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {EMPTY_STATE_ACTIONS.map((action) => (
+                <button key={action.type} type="button" className="ui-button-accent px-4 py-2" onClick={() => handleCreate(action.type)}>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : null}
+
+      <div className="ui-panel p-4">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Разделы рабочей области</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">Фильтруйте блоки по разделу, не изменяя сами данные проекта.</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {[
+              { id: 'all', title: 'Все блоки' },
+              ...sections.map((section) => ({ id: section.id, title: section.title })),
+              { id: 'none', title: 'Без раздела' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectSectionFilter?.(item.id)}
+                className={cn(
+                  'ui-filter-pill shrink-0',
+                  activeSectionFilter === item.id && 'border-(--accent-border) bg-(--accent-soft) text-(--accent)',
+                )}
+              >
+                {item.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {filterEmpty ? (
+        <div className="ui-panel p-6">
+          <div className="rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) p-6 text-center">
+            <h2 className="text-xl font-semibold text-(--text-primary)">В этом разделе пока нет блоков</h2>
+            <p className="mt-2 text-sm text-(--text-muted)">Добавьте текст, задачу, идею или файл, чтобы заполнить выбранный раздел.</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {EMPTY_STATE_ACTIONS.slice(0, 4).map((action) => (
+                <button key={action.type} type="button" className="ui-button-accent px-4 py-2" onClick={() => handleCreate(action.type)}>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="ui-panel min-w-0 p-3 md:p-4">
+        <div
+          ref={canvasRef}
+          className={cn(
+            'relative min-h-160 w-full min-w-0 overflow-auto rounded-3xl border border-(--border)',
+            isMobile ? 'bg-(--bg) p-3' : 'bg-(--panel) p-4',
+          )}
+          style={isMobile
+            ? undefined
+            : {
+                backgroundImage: 'linear-gradient(to right, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px)',
+                backgroundSize: '32px 32px',
+                backgroundPosition: '0 0',
+              }}
+        >
+          <div className={cn(isMobile ? 'grid grid-cols-1 gap-4' : 'relative min-h-full min-w-full')} style={isMobile ? undefined : { minHeight: canvasHeight }}>
+            {!isMobile && resolvedRelations.length > 0 ? (
+              <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
+                {resolvedRelations.map((relation) => {
+                  const isSelected = relation.id === selectedRelationId
+
+                  return (
+                    <line
+                      key={relation.id}
+                      x1={relation.fromX}
+                      y1={relation.fromY}
+                      x2={relation.toX}
+                      y2={relation.toY}
+                      stroke={isSelected ? 'var(--accent)' : 'var(--border)'}
+                      strokeOpacity={isSelected ? 0.75 : 0.6}
+                      strokeWidth={isSelected ? 2 : 1.75}
+                    />
+                  )
+                })}
+              </svg>
+            ) : null}
+            {filteredBlocks.map((block) => (
+              <WorkspaceCard
+                key={block.id}
+                block={block}
+                sectionTitle={block.sectionId ? (sectionTitleMap.get(block.sectionId) ?? 'Раздел') : null}
+                selected={block.id === selectedBlockId}
+                dragging={draggingBlockId === block.id}
+                resizing={resizingBlockId === block.id}
+                relationSummary={relationSummaryMap[block.id]}
+                mobileRelations={mobileRelationMap[block.id] ?? []}
+                mode={isMobile ? 'list' : 'canvas'}
+                onSelect={(blockId) => onSelectBlock?.(blockId)}
+                onDragStart={handleDragStart}
+                onDragMove={handleDragMove}
+                onDragEnd={handleDragEnd}
+                onResizeStart={handleResizeStart}
+                onResizeMove={handleResizeMove}
+                onResizeEnd={handleResizeEnd}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
     </section>
   )
 }

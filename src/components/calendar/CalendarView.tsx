@@ -106,9 +106,9 @@ export function CalendarView({
                   <>
                     <div className="flex flex-wrap gap-1">
                       {summary.taskCount > 0 ? <span className="h-2 w-2 rounded-full bg-(--accent)" /> : null}
-                      {summary.reminderCount > 0 ? <span className="h-2 w-2 rounded-full bg-[#5f8cff]" /> : null}
-                      {summary.eventCount > 0 ? <span className="h-2 w-2 rounded-full bg-[#7c6cff]" /> : null}
-                      {summary.projectCount > 0 ? <span className="h-2 w-2 rounded-full bg-[#49a86d]" /> : null}
+                      {summary.reminderCount > 0 ? <span className="h-2 w-2 rounded-full bg-(--indicator-reminder)" /> : null}
+                      {summary.eventCount > 0 ? <span className="h-2 w-2 rounded-full bg-(--indicator-event)" /> : null}
+                      {summary.projectCount > 0 ? <span className="h-2 w-2 rounded-full bg-(--indicator-project)" /> : null}
                     </div>
                     <div className="hidden space-y-1 text-xs text-(--text-muted) sm:block">
                       {summary.taskCount > 0 ? <p>Задачи: {summary.taskCount}</p> : null}

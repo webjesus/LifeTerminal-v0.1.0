@@ -6,9 +6,10 @@ import { TaskFormModal, type TaskFormValues } from '../components/tasks/TaskForm
 import { taskPriorityLabels } from '../components/tasks/taskMeta'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { FileItem, Goal, Idea, Note, Project, ProjectSection, Relation, Task, TaskPriority } from '../types'
+import type { FileItem, Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task, TaskPriority } from '../types'
 import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
+import { detachWorkspaceBlocksFromLinkedEntity, syncWorkspaceBlocksFromLinkedEntity } from '../utils/syncWorkspaceBlocks'
 
 type TaskFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'completed' | 'priority'
 type ModalMode = 'create' | 'edit' | 'view' | null
@@ -104,6 +105,7 @@ function buildTaskFromForm(values: TaskFormValues, existingTask?: Task): Task {
     id: existingTask?.id ?? crypto.randomUUID(),
     title: values.title,
     description: values.description,
+    tags: existingTask?.tags ?? [],
     status: values.status,
     priority: values.priority,
     deadline,
@@ -122,6 +124,7 @@ export function TasksPage() {
   const navigate = useNavigate()
   const { settings } = useAppSettings()
   const { value: tasks, setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
+  const { setValue: setProjectWorkspaceBlocks } = useLocalStorage<ProjectWorkspaceBlock[]>(storageKeys.projectWorkspaceBlocks, [])
   const { value: projects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: notes } = useLocalStorage<Note[]>(storageKeys.notes, [])
   const { value: ideas } = useLocalStorage<Idea[]>(storageKeys.ideas, [])
@@ -217,10 +220,11 @@ export function TasksPage() {
       return
     }
 
-    setTasks((currentTasks) =>
-      currentTasks.map((task) =>
-        task.id === selectedTask.id ? buildTaskFromForm(values, task) : task,
-      ),
+    const nextTask = buildTaskFromForm(values, selectedTask)
+
+    setTasks((currentTasks) => currentTasks.map((task) => (task.id === selectedTask.id ? nextTask : task)))
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'task', entity: nextTask, blocks: currentBlocks }),
     )
     syncRelationsForItem(selectedTask.id, 'task', values.relatedItems)
     closeModal()
@@ -236,6 +240,7 @@ export function TasksPage() {
     }
 
     setTasks((currentTasks) => currentTasks.filter((item) => item.id !== task.id))
+  setProjectWorkspaceBlocks((currentBlocks) => detachWorkspaceBlocksFromLinkedEntity(currentBlocks, 'task', task.id))
     deleteRelationsForItem(task.id)
 
     if (selectedTaskId === task.id) {
@@ -245,6 +250,12 @@ export function TasksPage() {
 
   function handleToggleComplete(task: Task) {
     const timestamp = new Date().toISOString()
+    const updatedTask: Task = {
+      ...task,
+      status: task.status === 'completed' ? 'in_progress' : 'completed',
+      completedAt: task.status === 'completed' ? null : timestamp,
+      updatedAt: timestamp,
+    }
 
     setTasks((currentTasks) =>
       currentTasks.map((item) => {
@@ -252,15 +263,12 @@ export function TasksPage() {
           return item
         }
 
-        const isCompleted = item.status === 'completed'
-
-        return {
-          ...item,
-          status: isCompleted ? 'in_progress' : 'completed',
-          completedAt: isCompleted ? null : timestamp,
-          updatedAt: timestamp,
-        }
+        return updatedTask
       }),
+    )
+
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'task', entity: updatedTask, blocks: currentBlocks }),
     )
   }
 
@@ -269,17 +277,22 @@ export function TasksPage() {
     const extendedDate = new Date(baseDate)
     extendedDate.setDate(extendedDate.getDate() + 1)
     const timestamp = new Date().toISOString()
+    const updatedTask: Task = {
+      ...task,
+      deadline: extendedDate.toISOString(),
+      updatedAt: timestamp,
+    }
 
     setTasks((currentTasks) =>
       currentTasks.map((item) =>
         item.id === task.id
-          ? {
-              ...item,
-              deadline: extendedDate.toISOString(),
-              updatedAt: timestamp,
-            }
+          ? updatedTask
           : item,
       ),
+    )
+
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'task', entity: updatedTask, blocks: currentBlocks }),
     )
   }
 
@@ -313,13 +326,13 @@ export function TasksPage() {
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">На сегодня</p>
             <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.today}</p>
           </div>
-          <div className="ui-stat-card border-[#f3d2c7] bg-[#fff8f4]">
+          <div className="ui-stat-card border-(--danger-border) bg-(--danger-bg)">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Просрочено</p>
-            <p className="mt-2 text-2xl font-semibold text-[#c35a3d]">{stats.overdue}</p>
+            <p className="mt-2 text-2xl font-semibold text-(--danger-text)">{stats.overdue}</p>
           </div>
-          <div className="ui-stat-card border-[#d7e8dc] bg-[#ebf7ef]">
+          <div className="ui-stat-card border-(--completed-border) bg-(--completed-bg)">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Выполнено</p>
-            <p className="mt-2 text-2xl font-semibold text-[#37734f]">{stats.completed}</p>
+            <p className="mt-2 text-2xl font-semibold text-(--completed-text)">{stats.completed}</p>
           </div>
         </div>
       </header>
@@ -335,7 +348,7 @@ export function TasksPage() {
                 className={[
                   'ui-filter-pill',
                   activeFilter === filter
-                    ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-[0_6px_18px_rgba(57,39,255,0.12)]'
+                    ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
                     : 'hover:border-(--accent-border) hover:text-(--text-primary)',
                 ].join(' ')}
               >

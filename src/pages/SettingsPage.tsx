@@ -23,7 +23,7 @@ export function SettingsPage() {
   ]
 
   return (
-    <section className="mx-auto w-full max-w-[1100px] space-y-4 md:space-y-6">
+    <section className="mx-auto w-full max-w-275 space-y-4 md:space-y-6">
       <header className="ui-panel p-4 sm:p-5 md:p-6">
         <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Настройки</p>
         <h1 className="mt-2 text-2xl font-semibold text-(--text-primary) md:text-3xl">Настройки приложения</h1>

@@ -5,11 +5,17 @@ export const storageKeys = {
   projects: 'lifeos_projects',
   projectSections: 'lifeos_project_sections',
   files: 'lifeos_files',
+  projectAttachments: 'lifeos_project_attachments',
   goals: 'lifeos_goals',
+  projectGoals: 'lifeos_project_goals',
+  projectMilestones: 'lifeos_project_milestones',
+  projectActivities: 'lifeos_project_activities',
   relations: 'lifeos_relations',
   calendarEvents: 'lifeos_calendar_events',
   reminders: 'lifeos_reminders',
   appSettings: 'lifeos_settings',
+  projectWorkspaceBlocks: 'lifeos_project_workspace_blocks',
+  projectWorkspaceRelations: 'lifeos_project_workspace_relations',
 } as const
 
 export type StorageKey = (typeof storageKeys)[keyof typeof storageKeys]

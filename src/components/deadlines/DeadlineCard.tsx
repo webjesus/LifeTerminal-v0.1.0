@@ -27,7 +27,7 @@ export function DeadlineCard({
       className={[
         'ui-panel ui-card-hover p-4',
         isOverdue
-          ? 'border-[#f3d2c7] bg-[#fff8f4]'
+          ? 'border-(--danger-border) bg-(--danger-bg)'
           : '',
       ].join(' ')}
     >
@@ -44,7 +44,7 @@ export function DeadlineCard({
       <div className="mt-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Дедлайн</p>
-          <p className={isOverdue ? 'mt-1 text-sm text-[#c35a3d]' : 'mt-1 text-sm text-(--text-primary)'}>
+          <p className={isOverdue ? 'mt-1 text-sm text-(--danger-text)' : 'mt-1 text-sm text-(--text-primary)'}>
             {dateLabel}
           </p>
         </div>

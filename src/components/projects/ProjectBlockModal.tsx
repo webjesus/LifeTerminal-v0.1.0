@@ -2,12 +2,14 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { LinkedItemsPanel } from '../linked/LinkedItemsPanel'
 import type { ProjectSection } from '../../types'
 import type { RelationSelectableItem } from '../../utils/relations'
+import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
 import { workspaceItemKindBadges, workspaceItemKindLabels, type WorkspaceItemKind } from './projectMeta'
 
 export type ProjectBlockEditorValues = {
   title: string
   description: string
   content: string
+  tags: string[]
   url: string
   sectionId: string | null
   relatedBlockIds: string[]
@@ -34,10 +36,13 @@ function formatDateTime(value: string) {
 }
 
 export function ProjectBlockModal({ block, sections, availableBlocks, relatedItems, availableRelationItems, onOpenRelatedItem, onClose, onSave, onDelete }: ProjectBlockModalProps) {
+  useLockBodyScroll(true)
+
   const [formState, setFormState] = useState<ProjectBlockEditorValues>({
     title: block.title,
     description: block.description,
     content: block.content,
+    tags: block.tags,
     url: block.url ?? '',
     sectionId: block.parentSectionId,
     relatedBlockIds: block.relatedBlockIds,
@@ -51,7 +56,7 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
     [availableBlocks, block.id],
   )
   const canManageEntityRelations = Boolean(
-    block.entityId && ['task', 'note', 'idea', 'goal', 'file', 'photo', 'link'].includes(block.kind),
+    block.entityId && ['task', 'note', 'idea', 'goal', 'file', 'photo', 'link', 'problem', 'solution'].includes(block.kind),
   )
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -83,8 +88,8 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-(--border) bg-(--panel) shadow-[0_28px_100px_rgba(0,0,0,0.45)]">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-(--overlay) px-0 py-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-8">
+      <div className="max-h-[94dvh] w-full max-w-full overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-[var(--shadow-soft)] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-3xl">
         <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -112,7 +117,7 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid max-h-[calc(92vh-92px)] gap-0 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_320px]">
+        <form onSubmit={handleSubmit} className="grid max-h-[calc(94dvh-92px)] gap-0 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_320px] sm:max-h-[calc(92vh-92px)]">
           <div className="space-y-5 px-6 py-6">
             <label className="space-y-2">
               <span className="text-sm text-(--text-secondary)">Название</span>
@@ -144,6 +149,19 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
             </label>
 
             <label className="space-y-2">
+              <span className="text-sm text-(--text-secondary)">Теги</span>
+              <input
+                value={formState.tags.join(', ')}
+                onChange={(event) => setFormState((current) => ({
+                  ...current,
+                  tags: Array.from(new Set(event.target.value.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean))),
+                }))}
+                placeholder="Через запятую"
+                className="w-full rounded-xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
+              />
+            </label>
+
+            <label className="space-y-2">
               <span className="text-sm text-(--text-secondary)">URL / путь</span>
               <input
                 value={formState.url}
@@ -164,14 +182,14 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
                 href={formState.url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex rounded-xl border border-(--accent) bg-(--accent-soft) px-4 py-3 text-sm font-medium text-(--text-primary) transition-colors duration-200 hover:bg-orange-950/60"
+                className="inline-flex rounded-xl border border-(--accent-border) bg-(--accent-soft) px-4 py-3 text-sm font-medium text-(--text-primary) transition-colors duration-200 hover:border-(--accent)"
               >
                 Открыть ресурс
               </a>
             ) : null}
           </div>
 
-          <div className="border-t border-(--border) bg-black/10 px-6 py-6 xl:border-l xl:border-t-0">
+          <div className="border-t border-(--border) bg-(--panel-elevated) px-6 py-6 xl:border-l xl:border-t-0">
             <div className="space-y-5">
               <label className="space-y-2">
                 <span className="text-sm text-(--text-secondary)">Подраздел проекта</span>

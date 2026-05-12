@@ -5,20 +5,26 @@ import { IdeaCard } from '../components/ideas/IdeaCard'
 import { IdeaFormModal, type IdeaFormValues } from '../components/ideas/IdeaFormModal'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { Goal, Idea, Note, Project, ProjectSection, Relation, Task } from '../types'
+import type { Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task } from '../types'
+import { normalizeIdea, normalizeNote } from '../utils/normalizeEntities'
 import { buildRelationCatalog, createRelation, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
+import { detachWorkspaceBlocksFromLinkedEntity, syncWorkspaceBlocksFromLinkedEntity } from '../utils/syncWorkspaceBlocks'
+import { getAllTags } from '../utils/tags'
 
-type ModalMode = 'create' | 'edit' | 'view' | null
-type IdeaFilter = 'all' | 'new' | 'thinking' | 'in_progress' | 'implemented' | 'postponed'
+type ModalMode = 'create' | 'edit' | null
+type IdeaFilter = 'all' | 'new' | 'thinking' | 'promising' | 'planned' | 'in_progress' | 'implemented' | 'postponed' | 'archived'
 
 const filterLabels: Record<IdeaFilter, string> = {
   all: 'All',
-  new: 'New',
-  thinking: 'Thinking',
-  in_progress: 'In progress',
-  implemented: 'Implemented',
-  postponed: 'Postponed',
+  new: 'Новые',
+  thinking: 'Обдумываются',
+  promising: 'Перспективные',
+  planned: 'Запланированные',
+  in_progress: 'В работе',
+  implemented: 'Реализованные',
+  postponed: 'Отложенные',
+  archived: 'Архив',
 }
 
 function uniqueIds(ids: string[]) {
@@ -89,7 +95,13 @@ function buildIdeaFromForm(values: IdeaFormValues, existingIdea?: Idea): Idea {
     id: existingIdea?.id ?? crypto.randomUUID(),
     title: values.title,
     description: values.description,
+    problem: values.problem,
+    value: values.value,
+    nextStep: values.nextStep,
     status: values.status,
+    priority: values.priority,
+    difficulty: values.difficulty,
+    tags: values.tags,
     createdAt: existingIdea?.createdAt ?? timestamp,
     updatedAt: timestamp,
     projectId: values.projectId,
@@ -103,17 +115,11 @@ function compareIdeas(a: Idea, b: Idea) {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
 export function IdeasPage() {
   const navigate = useNavigate()
   const { settings } = useAppSettings()
   const { value: ideas, setValue: setIdeas } = useLocalStorage<Idea[]>(storageKeys.ideas, [])
+  const { value: projectWorkspaceBlocks, setValue: setProjectWorkspaceBlocks } = useLocalStorage<ProjectWorkspaceBlock[]>(storageKeys.projectWorkspaceBlocks, [])
   const { value: projects, setValue: setProjects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: tasks, setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { value: notes, setValue: setNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
@@ -125,12 +131,27 @@ export function IdeasPage() {
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<IdeaFilter>('all')
 
-  const selectedIdea = useMemo(
-    () => ideas.find((idea) => idea.id === selectedIdeaId) ?? null,
-    [ideas, selectedIdeaId],
+  const normalizedIdeas = useMemo(
+    () => ideas.map(normalizeIdea),
+    [ideas],
   )
 
-  const sortedIdeas = useMemo(() => [...ideas].sort(compareIdeas), [ideas])
+  const normalizedNotes = useMemo(
+    () => notes.map(normalizeNote),
+    [notes],
+  )
+
+  const allTags = useMemo(
+    () => getAllTags(normalizedIdeas, normalizedNotes, tasks, projects),
+    [normalizedIdeas, normalizedNotes, projects, tasks],
+  )
+
+  const selectedIdea = useMemo(
+    () => normalizedIdeas.find((idea) => idea.id === selectedIdeaId) ?? null,
+    [normalizedIdeas, selectedIdeaId],
+  )
+
+  const sortedIdeas = useMemo(() => [...normalizedIdeas].sort(compareIdeas), [normalizedIdeas])
 
   const filteredIdeas = useMemo(() => {
     if (activeFilter === 'all') {
@@ -143,11 +164,11 @@ export function IdeasPage() {
   const stats = useMemo(
     () => ({
       total: ideas.length,
-      implemented: ideas.filter((idea) => idea.status === 'implemented').length,
-      inProgress: ideas.filter((idea) => idea.status === 'in_progress').length,
-      linked: ideas.filter((idea) => idea.projectId || idea.taskIds.length > 0 || idea.noteIds.length > 0).length,
+      implemented: normalizedIdeas.filter((idea) => idea.status === 'implemented').length,
+      inProgress: normalizedIdeas.filter((idea) => idea.status === 'in_progress').length,
+      linked: normalizedIdeas.filter((idea) => idea.projectId || idea.taskIds.length > 0 || idea.noteIds.length > 0).length,
     }),
-    [ideas],
+    [normalizedIdeas, ideas.length],
   )
 
   const relationCatalog = useMemo(
@@ -176,8 +197,7 @@ export function IdeasPage() {
   }
 
   function openViewModal(idea: Idea) {
-    setSelectedIdeaId(idea.id)
-    setModalMode('view')
+    navigate(`/ideas/${idea.id}`)
   }
 
   function openEditModal(idea: Idea) {
@@ -205,6 +225,9 @@ export function IdeasPage() {
     const nextProjects = syncProjectIdeaRefs(projects, nextIdea.id, nextIdea.projectId)
 
     persistIdeaRelations(nextIdeas, nextTasks, nextNotes, nextProjects)
+    setProjectWorkspaceBlocks(
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'idea', entity: nextIdea, blocks: projectWorkspaceBlocks }),
+    )
     syncRelationsForItem(nextIdea.id, 'idea', values.relatedItems)
     closeModal()
   }
@@ -240,6 +263,7 @@ export function IdeasPage() {
     const nextProjects = syncProjectIdeaRefs(projects, idea.id, null)
 
     persistIdeaRelations(nextIdeas, nextTasks, nextNotes, nextProjects)
+    setProjectWorkspaceBlocks(detachWorkspaceBlocksFromLinkedEntity(projectWorkspaceBlocks, 'idea', idea.id))
     deleteRelationsForItem(idea.id)
 
     if (selectedIdeaId === idea.id) {
@@ -259,7 +283,13 @@ export function IdeasPage() {
     const nextIdea = buildIdeaFromForm({
       title,
       description: '',
+      problem: '',
+      value: '',
+      nextStep: '',
       status: 'new',
+      priority: 'medium',
+      difficulty: 'medium',
+      tags: [],
       projectId: null,
       taskIds: [],
       noteIds: [],
@@ -276,6 +306,7 @@ export function IdeasPage() {
       id: crypto.randomUUID(),
       title: idea.title,
       description: idea.description,
+      tags: ['idea'],
       status: 'new',
       priority: 'medium',
       deadline: null,
@@ -294,7 +325,7 @@ export function IdeasPage() {
       taskIds: uniqueIds([...idea.taskIds, newTask.id]),
       updatedAt: timestamp,
     }
-    const nextIdeas = ideas.map((item) => (item.id === idea.id ? nextIdea : item))
+    const nextIdeas = normalizedIdeas.map((item) => (item.id === idea.id ? nextIdea : item))
     const nextTasks = syncTaskIdeaRefs([...tasks, newTask], idea.id, nextIdea.taskIds)
     const nextProjects = projects.map((project) =>
       project.id === idea.projectId
@@ -318,8 +349,12 @@ export function IdeasPage() {
     const newNote: Note = {
       id: crypto.randomUUID(),
       title: idea.title,
+      summary: idea.problem || idea.nextStep,
       content: idea.description,
+      type: 'solution',
+      status: 'draft',
       tags: ['idea'],
+      category: 'ideas',
       createdAt: timestamp,
       updatedAt: timestamp,
       projectId: idea.projectId,
@@ -334,8 +369,8 @@ export function IdeasPage() {
       noteIds: uniqueIds([...idea.noteIds, newNote.id]),
       updatedAt: timestamp,
     }
-    const nextIdeas = ideas.map((item) => (item.id === idea.id ? nextIdea : item))
-    const nextNotes = syncNoteIdeaRefs([...notes, newNote], idea.id, nextIdea.noteIds)
+    const nextIdeas = normalizedIdeas.map((item) => (item.id === idea.id ? nextIdea : item))
+    const nextNotes = syncNoteIdeaRefs([...normalizedNotes, newNote], idea.id, nextIdea.noteIds)
     const nextProjects = projects.map((project) =>
       project.id === idea.projectId
         ? {
@@ -383,9 +418,9 @@ export function IdeasPage() {
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">В работе</p>
             <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.inProgress}</p>
           </div>
-          <div className="ui-stat-card border-[#d7e8dc] bg-[#ebf7ef]">
+          <div className="ui-stat-card border-(--completed-border) bg-(--completed-bg)">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Реализовано</p>
-            <p className="mt-2 text-2xl font-semibold text-[#37734f]">{stats.implemented}</p>
+            <p className="mt-2 text-2xl font-semibold text-(--completed-text)">{stats.implemented}</p>
           </div>
           <div className="ui-stat-card">
             <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Со связями</p>
@@ -404,7 +439,7 @@ export function IdeasPage() {
               className={[
                 'ui-filter-pill',
                 activeFilter === filter
-                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-[0_6px_18px_rgba(57,39,255,0.12)]'
+                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
                   : 'hover:border-(--accent-border) hover:text-(--text-primary)',
               ].join(' ')}
             >
@@ -441,7 +476,7 @@ export function IdeasPage() {
           {filteredIdeas.map((idea) => {
             const linkedProject = projects.find((project) => project.id === idea.projectId) ?? null
             const linkedTasks = tasks.filter((task) => idea.taskIds.includes(task.id))
-            const linkedNotes = notes.filter((note) => idea.noteIds.includes(note.id))
+            const linkedNotes = normalizedNotes.filter((note) => idea.noteIds.includes(note.id))
 
             return (
               <IdeaCard
@@ -468,25 +503,14 @@ export function IdeasPage() {
           idea={selectedIdea}
           projects={projects}
           tasks={tasks}
-          notes={notes}
+          notes={normalizedNotes}
+          availableTags={allTags}
           relatedItems={selectedIdeaRelations}
           availableRelationItems={availableRelationItems}
           onOpenRelatedItem={(item) => navigate(getLinkedItemPath(item))}
           onClose={closeModal}
           onSubmit={modalMode === 'create' ? handleCreateIdea : handleUpdateIdea}
         />
-      ) : null}
-
-      {selectedIdea && modalMode === 'view' ? (
-        <div className="ui-panel p-5 text-sm text-(--text-muted)">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Последний просмотр</p>
-              <p className="mt-1 text-(--text-primary)">{selectedIdea.title}</p>
-            </div>
-            <p>Создана {formatDateTime(selectedIdea.createdAt)} · Обновлена {formatDateTime(selectedIdea.updatedAt)}</p>
-          </div>
-        </div>
       ) : null}
     </section>
   )
