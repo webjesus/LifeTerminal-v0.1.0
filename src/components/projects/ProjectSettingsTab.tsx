@@ -86,11 +86,8 @@ export function ProjectSettingsTab({ project, tagSuggestions, onSave, onDelete }
   return (
     <section className="ui-panel p-5 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Настройки проекта</p>
-          <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Настройки проекта</h2>
-        </div>
-        <button type="button" onClick={handleSubmit} className="ui-button-accent px-4 py-3">Сохранить изменения</button>
+        <p className="max-w-2xl text-sm text-(--text-muted)">Редактирование параметров проекта без отдельного повторяющегося hero-блока.</p>
+        <button type="button" onClick={handleSubmit} className="ui-button-accent px-4 py-2.5">Сохранить изменения</button>
       </div>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">

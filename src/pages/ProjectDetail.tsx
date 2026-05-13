@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { PencilLine, SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Modal } from '../components/Modal'
 import { EmptyState } from '../components/projects/EmptyState'
 import { ProjectAddElementSheet } from '../components/projects/ProjectAddElementSheet'
 import { ProjectAttachmentUploader, type ProjectAttachmentFormValues } from '../components/projects/ProjectAttachmentUploader'
@@ -11,18 +12,16 @@ import { ProjectGoalsTab, type ProjectGoalFormValues } from '../components/proje
 import { ProjectHeader } from '../components/projects/ProjectHeader'
 import { ProjectIdeasTab } from '../components/projects/ProjectIdeasTab'
 import { ProjectInspector } from '../components/projects/ProjectInspector'
-import { ProjectMobileToolbar } from '../components/projects/ProjectMobileToolbar'
 import { ProjectNotesTab } from '../components/projects/ProjectNotesTab'
 import { ProjectOverviewTab } from '../components/projects/ProjectOverviewTab'
-import { ProjectRelationsTab } from '../components/projects/ProjectRelationsTab'
 import { ProjectSectionList } from '../components/projects/ProjectSectionList'
 import { ProjectSettingsTab, type ProjectSettingsValues } from '../components/projects/ProjectSettingsTab'
 import { ProjectTabs } from '../components/projects/ProjectTabs'
-import type { ProjectTab } from '../components/projects/ProjectTabs'
+import type { ProjectSurfaceTab } from '../components/projects/ProjectTabs'
 import { ProjectActivityTab } from '../components/projects/ProjectActivityTab'
+import { ProjectMilestonesPanel, type ProjectMilestoneFormValues } from '../components/projects/ProjectMilestonesPanel'
 import { ProjectTasksTab } from '../components/projects/ProjectTasksTab'
 import { ProjectToolbar } from '../components/projects/ProjectToolbar'
-import type { ProjectMilestoneFormValues } from '../components/projects/ProjectMilestonesPanel'
 import { createProjectSection } from '../components/projects/projectMeta'
 import { ProjectWorkspace } from '../components/projects/ProjectWorkspace'
 import { useLocalStorage } from '../hooks/useLocalStorage'
@@ -76,21 +75,25 @@ function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids))
 }
 
-function resolveProjectTab(value: string | null | undefined): ProjectTab {
+function resolveProjectTab(value: string | null | undefined): ProjectSurfaceTab {
   switch (value) {
     case 'overview':
     case 'workspace':
-    case 'goals':
     case 'tasks':
+    case 'materials':
+    case 'progress':
+    case 'settings':
+      return value
     case 'notes':
     case 'ideas':
     case 'files':
-    case 'relations':
+      return 'materials'
+    case 'goals':
     case 'activity':
-    case 'settings':
-      return value
+      return 'progress'
+    case 'relations':
     case 'map':
-      return 'relations'
+      return 'workspace'
     default:
       return 'overview'
   }
@@ -191,7 +194,9 @@ export function ProjectDetailPage() {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [workspaceSectionFilter, setWorkspaceSectionFilter] = useState<string>('all')
   const [isAddElementSheetOpen, setIsAddElementSheetOpen] = useState(false)
+  const [isAddMaterialModalOpen, setIsAddMaterialModalOpen] = useState(false)
   const [isAddRelationSheetOpen, setIsAddRelationSheetOpen] = useState(false)
+  const [materialsFilter, setMaterialsFilter] = useState<'all' | 'notes' | 'ideas' | 'files' | 'links'>('all')
   const [attachmentEditor, setAttachmentEditor] = useState<{
     mode: 'image' | 'file' | 'link'
     attachmentId?: string | null
@@ -436,24 +441,6 @@ export function ProjectDetailPage() {
   const linkedNotes = useMemo(() => (project ? normalizedNotes.filter((item) => item.projectId === project.id) : []), [normalizedNotes, project])
   const linkedIdeas = useMemo(() => (project ? normalizedIdeas.filter((item) => item.projectId === project.id) : []), [normalizedIdeas, project])
   const linkedFiles = useMemo(() => projectAttachmentsForProject, [projectAttachmentsForProject])
-  const linkedGoals = useMemo(() => (project ? normalizedGoals.filter((item) => item.projectId === project.id) : []), [normalizedGoals, project])
-  const relationGoals = useMemo<Goal[]>(() => [
-    ...linkedGoals,
-    ...projectGoalsForProject.map((goal) => ({
-      id: goal.id,
-      title: goal.title,
-      description: goal.description,
-      status: goal.status,
-      deadline: goal.deadline,
-      progress: goal.progress,
-      createdAt: goal.createdAt,
-      updatedAt: goal.updatedAt,
-      projectId: goal.projectId,
-      taskIds: goal.taskIds,
-      noteIds: goal.noteIds,
-      ideaIds: goal.ideaIds,
-    })),
-  ], [linkedGoals, projectGoalsForProject])
   const projectActivityFeed = useMemo(() => (project ? normalizedProjectActivities.filter((item) => item.projectId === project.id) : []), [normalizedProjectActivities, project])
   const editableRelations = useMemo(() => relations.filter(isEditableRelation), [relations])
   const relationCatalog = useMemo(() => buildRelationCatalog({ tasks, projects, notes: normalizedNotes, ideas: normalizedIdeas, files, goals: normalizedGoals, sections: normalizedSections }), [files, normalizedGoals, normalizedIdeas, normalizedNotes, normalizedSections, projects, tasks])
@@ -607,17 +594,46 @@ export function ProjectDetailPage() {
   )
   const projectTabCounts = useMemo(
     () => ({
-      goals: projectGoalsForProject.length,
       tasks: linkedTasks.length,
-      notes: linkedNotes.length,
-      ideas: linkedIdeas.length,
-      files: linkedFiles.length,
-      relations: workspaceRelationsForProject.length,
+      materials: linkedNotes.length + linkedIdeas.length + linkedFiles.length,
+      progress: projectGoalsForProject.length + projectMilestonesForProject.length + linkedTasks.filter((task) => task.status === 'completed').length + projectActivityFeed.length,
       blocks: workspaceBlocks.length,
-      activity: projectActivityFeed.length,
     }),
-    [linkedFiles.length, linkedIdeas.length, linkedNotes.length, linkedTasks.length, projectActivityFeed.length, projectGoalsForProject.length, workspaceBlocks.length, workspaceRelationsForProject.length],
+    [linkedFiles.length, linkedIdeas.length, linkedNotes.length, linkedTasks, projectActivityFeed.length, projectGoalsForProject.length, projectMilestonesForProject.length, workspaceBlocks.length],
   )
+  const progressMetrics = useMemo(() => {
+    const completedTasks = linkedTasks.filter((task) => task.status === 'completed').length
+    const activeTasks = linkedTasks.filter((task) => task.status !== 'completed').length
+    const overdueTasks = linkedTasks.filter((task) => task.deadline && task.status !== 'completed' && new Date(task.deadline).getTime() < Date.now()).length
+    const materialsAdded = linkedNotes.length + linkedIdeas.length + linkedFiles.length
+    const activeDays = new Set(projectActivityFeed.map((activity) => new Date(activity.createdAt).toISOString().slice(0, 10))).size
+
+    return {
+      completedTasks,
+      activeTasks,
+      overdueTasks,
+      materialsAdded,
+      blocks: workspaceBlocks.length,
+      activeDays,
+    }
+  }, [linkedFiles.length, linkedIdeas.length, linkedNotes.length, linkedTasks, projectActivityFeed, workspaceBlocks.length])
+  const materialLinks = useMemo(() => linkedFiles.filter((file) => file.type === 'link'), [linkedFiles])
+  const materialFiles = useMemo(() => linkedFiles.filter((file) => file.type !== 'link'), [linkedFiles])
+
+  function handleOpenAddMaterialModal() {
+    setIsAddMaterialModalOpen(true)
+  }
+
+  function handleCreateMaterial(type: 'note' | 'idea' | 'file' | 'link') {
+    setIsAddMaterialModalOpen(false)
+
+    if (type === 'file' || type === 'link') {
+      openAttachmentUploader(type)
+      return
+    }
+
+    handleCreateWorkspaceBlock(type)
+  }
 
   const selectedBlockRelations = useMemo(() => {
     if (!selectedWorkspaceBlock) {
@@ -781,48 +797,6 @@ export function ProjectDetailPage() {
     ])
   }, [project, projectRelations, relations, setRelations])
 
-  function handleOpenRelationNode(node: { id: string; type: RelationEntityType }) {
-    if (node.type === 'project_section') {
-      setActiveSectionId(node.id)
-      return
-    }
-
-    const matchingBlock = projectSectionBlocks.find((block) => {
-      if (!block.entityId || block.entityId !== node.id) {
-        return false
-      }
-
-      return getBlockRelationType(block.kind) === node.type
-    })
-
-    if (matchingBlock) {
-      setSelectedWorkspaceBlockId(matchingBlock.id)
-
-      if (matchingBlock.parentSectionId) {
-        setActiveSectionId(matchingBlock.parentSectionId)
-      }
-
-      return
-    }
-
-    switch (node.type) {
-      case 'task':
-        navigate('/tasks')
-        break
-      case 'note':
-        navigate('/notes')
-        break
-      case 'idea':
-        navigate('/ideas')
-        break
-      case 'file':
-        navigate('/files')
-        break
-      default:
-        break
-    }
-  }
-
   function updateProjectLinks(projectPatch: Partial<Pick<Project, 'taskIds' | 'noteIds' | 'ideaIds' | 'fileIds' | 'goalIds' | 'sectionIds'>>) {
     if (!project) {
       return
@@ -847,7 +821,7 @@ export function ProjectDetailPage() {
     )
   }
 
-  function handleChangeTab(tab: ProjectTab) {
+  function handleChangeTab(tab: ProjectSurfaceTab) {
     setSearchParams((currentParams) => {
       const nextParams = new URLSearchParams(currentParams)
       nextParams.set('tab', tab)
@@ -1852,6 +1826,10 @@ export function ProjectDetailPage() {
     }
 
     if (activeTool !== 'relation') {
+      setIsWorkspaceInspectorVisible(true)
+    }
+
+    if (activeTool !== 'relation') {
       return
     }
 
@@ -2525,12 +2503,14 @@ export function ProjectDetailPage() {
               </p>
               {activeSectionId ? <p className="mt-3 text-sm text-(--text-secondary)">Сейчас выбран раздел «{projectSections.find((section) => section.id === activeSectionId)?.title ?? 'Раздел'}».</p> : null}
               <button type="button" onClick={() => handleChangeTab('workspace')} className="ui-button-accent mt-4 px-4 py-3">Открыть рабочую область</button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => handleChangeTab('tasks')} className="ui-button px-4 py-2.5 text-sm">Добавить задачу</button>
+                <button type="button" onClick={handleOpenAddMaterialModal} className="ui-button px-4 py-2.5 text-sm">Добавить материал</button>
+              </div>
             </section>
           </div>
         </div>
       ) : null}
-
-      {activeTab === 'goals' ? <ProjectGoalsTab goals={projectGoalsForProject} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} workspaceBlocks={workspaceBlocks} tagSuggestions={projectTagSuggestions} onCreateGoal={handleCreateProjectGoal} onUpdateGoal={handleUpdateProjectGoal} onDeleteGoal={handleDeleteProjectGoal} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
       {activeTab === 'workspace' ? (
         <div
@@ -2551,19 +2531,6 @@ export function ProjectDetailPage() {
                 )}
               >
                 <SlidersHorizontal size={20} strokeWidth={2} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsWorkspaceInspectorVisible((current) => !current)}
-                aria-label={isWorkspaceInspectorVisible ? 'Свернуть инспектор' : 'Показать инспектор'}
-                className={cn(
-                  'pointer-events-auto inline-flex h-13 w-13 items-center justify-center rounded-2xl border bg-(--panel) shadow-(--shadow-floating) transition hover:-translate-y-0.5',
-                  isWorkspaceInspectorVisible
-                    ? 'border-(--accent-border) text-(--accent)'
-                    : 'border-(--border) text-(--text-secondary)',
-                )}
-              >
-                <PencilLine size={20} strokeWidth={2} />
               </button>
             </div>
           ) : null}
@@ -2665,56 +2632,61 @@ export function ProjectDetailPage() {
                 />
               </div>
             ) : null}
-            {isWorkspaceInspectorVisible ? (
-              <div className="min-w-0 lg:hidden">
-                <ProjectInspector
-                  project={project}
-                  selectedBlock={selectedWorkspaceBlock}
-                  sections={projectSections}
-                  onUpdateBlock={handleUpdateWorkspaceBlock}
-                  onDeleteBlock={handleDeleteWorkspaceBlock}
-                  onClose={() => {
+            {isWorkspaceInspectorVisible && selectedWorkspaceBlock ? (
+              <div className="lg:hidden">
+                <button
+                  type="button"
+                  aria-label="Закрыть инспектор"
+                  onClick={() => {
                     setIsWorkspaceInspectorVisible(false)
                   }}
-                  relatedTasks={linkedTasks}
-                  relatedNotes={linkedNotes}
-                  relatedIdeas={linkedIdeas}
-                  relatedFiles={linkedFiles}
-                  linkedEntity={linkedEntityByBlock}
-                  selectedAttachment={selectedAttachment}
-                  blockRelations={selectedBlockRelations}
-                  onCreateBlock={handleCreateWorkspaceBlock}
-                  onOpenAddElement={() => setIsAddElementSheetOpen(true)}
-                  onDeleteRelation={handleDeleteRelation}
-                  onCreateRelation={handleStartRelationFromBlock}
-                  onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
-                  onEditAttachment={(attachmentId) => {
-                    const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
-
-                    if (attachment) {
-                      openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
-                    }
-                  }}
-                  onDeleteAttachment={handleDeleteAttachment}
-                  onOpenAttachment={handleOpenAttachment}
-                  workspaceBlockCount={workspaceBlocks.length}
-                  activeToolLabel={activeTool === 'select' ? 'Выбор' : activeTool === 'pan' ? 'Рука' : activeTool}
-                  selectedSectionFilter={workspaceSectionFilter}
-                  zoomPercent={Math.round(workspaceCanvasView.zoom * 100)}
-                  onArrangeBlocks={() => setWorkspaceArrangeSignal((current) => current + 1)}
-                  onResetView={() => setWorkspaceResetViewSignal((current) => current + 1)}
-                  onOpenProjectSettings={() => handleChangeTab('settings')}
-                  onSelectSectionFilter={setWorkspaceSectionFilter}
+                  className="fixed inset-0 z-30 bg-(--overlay) backdrop-blur-[2px]"
                 />
+                <div className="fixed inset-x-0 bottom-0 z-40 px-0 pb-[env(safe-area-inset-bottom)]">
+                  <ProjectInspector
+                    project={project}
+                    selectedBlock={selectedWorkspaceBlock}
+                    sections={projectSections}
+                    onUpdateBlock={handleUpdateWorkspaceBlock}
+                    onDeleteBlock={handleDeleteWorkspaceBlock}
+                    onClose={() => {
+                      setIsWorkspaceInspectorVisible(false)
+                    }}
+                    relatedTasks={linkedTasks}
+                    relatedNotes={linkedNotes}
+                    relatedIdeas={linkedIdeas}
+                    relatedFiles={linkedFiles}
+                    linkedEntity={linkedEntityByBlock}
+                    selectedAttachment={selectedAttachment}
+                    blockRelations={selectedBlockRelations}
+                    onCreateBlock={handleCreateWorkspaceBlock}
+                    onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+                    onDeleteRelation={handleDeleteRelation}
+                    onCreateRelation={handleStartRelationFromBlock}
+                    onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
+                    onEditAttachment={(attachmentId) => {
+                      const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+                      if (attachment) {
+                        openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+                      }
+                    }}
+                    onDeleteAttachment={handleDeleteAttachment}
+                    onOpenAttachment={handleOpenAttachment}
+                    workspaceBlockCount={workspaceBlocks.length}
+                    activeToolLabel={activeTool === 'select' ? 'Выбор' : activeTool === 'pan' ? 'Рука' : activeTool}
+                    selectedSectionFilter={workspaceSectionFilter}
+                    zoomPercent={Math.round(workspaceCanvasView.zoom * 100)}
+                    onArrangeBlocks={() => setWorkspaceArrangeSignal((current) => current + 1)}
+                    onResetView={() => setWorkspaceResetViewSignal((current) => current + 1)}
+                    onOpenProjectSettings={() => handleChangeTab('settings')}
+                    onSelectSectionFilter={setWorkspaceSectionFilter}
+                    className="h-[min(78dvh,760px)] rounded-t-[28px] rounded-b-none border-x-0 border-b-0 shadow-(--shadow-floating)"
+                    contentClassName="h-full pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+                  />
+                </div>
               </div>
             ) : null}
-            <ProjectMobileToolbar
-              onAdd={() => setIsAddElementSheetOpen(true)}
-              onCreateText={() => handleToolbarCreateBlock('text')}
-              onCreateTask={() => handleToolbarCreateBlock('task')}
-              onCreateIdea={() => handleToolbarCreateBlock('idea')}
-              onMore={() => setIsAddElementSheetOpen(true)}
-            />
           </div>
           {isWorkspaceInspectorVisible && isWorkspaceFullscreen ? (
             <div
@@ -2800,23 +2772,119 @@ export function ProjectDetailPage() {
 
       {activeTab === 'tasks' ? <ProjectTasksTab tasks={linkedTasks} workspaceBlocks={workspaceBlocks} onCreateTask={() => handleCreateWorkspaceBlock('task')} onOpenTask={handleOpenTaskFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
-      {activeTab === 'notes' ? <ProjectNotesTab notes={linkedNotes} workspaceBlocks={workspaceBlocks} onCreateNote={() => handleCreateWorkspaceBlock('note')} onOpenNote={handleOpenNoteFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+      {activeTab === 'materials' ? (
+        <div className="space-y-6">
+          <section className="ui-panel p-5 md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Материалы</p>
+                <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Заметки, идеи и файлы проекта</h2>
+                <p className="mt-2 max-w-3xl text-sm text-(--text-secondary)">Собранное знание и артефакты проекта в одном месте. На поверхности только краткий контекст, детали открываются внутри сущности.</p>
+              </div>
+              <button type="button" onClick={handleOpenAddMaterialModal} className="ui-button-accent px-4 py-3">Добавить материал</button>
+            </div>
+            <div className="mt-4 ui-filter-scroll">
+              {([
+                ['all', 'Все'],
+                ['notes', 'Заметки'],
+                ['ideas', 'Идеи'],
+                ['files', 'Файлы'],
+                ['links', 'Ссылки'],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMaterialsFilter(value)}
+                  className={[
+                    'ui-filter-pill',
+                    materialsFilter === value
+                      ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
+                      : 'hover:border-(--accent-border) hover:text-(--text-primary)',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
 
-      {activeTab === 'ideas' ? <ProjectIdeasTab ideas={linkedIdeas} workspaceBlocks={workspaceBlocks} onCreateIdea={() => handleCreateWorkspaceBlock('idea')} onOpenIdea={handleOpenIdeaFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+          {(materialsFilter === 'all' || materialsFilter === 'notes') ? <ProjectNotesTab notes={linkedNotes} workspaceBlocks={workspaceBlocks} onCreateNote={() => handleCreateWorkspaceBlock('note')} onOpenNote={handleOpenNoteFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+          {(materialsFilter === 'all' || materialsFilter === 'ideas') ? <ProjectIdeasTab ideas={linkedIdeas} workspaceBlocks={workspaceBlocks} onCreateIdea={() => handleCreateWorkspaceBlock('idea')} onOpenIdea={handleOpenIdeaFromProject} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+          {(materialsFilter === 'all' || materialsFilter === 'files') ? <ProjectFilesTab files={materialFiles} workspaceBlocks={workspaceBlocks} onCreateFile={() => openAttachmentUploader('file')} onCreateImage={() => openAttachmentUploader('image')} onCreateLink={() => openAttachmentUploader('link')} onOpenFile={handleOpenAttachment} onEditFile={(attachmentId) => {
+            const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
 
-      {activeTab === 'files' ? <ProjectFilesTab files={linkedFiles} workspaceBlocks={workspaceBlocks} onCreateFile={() => openAttachmentUploader('file')} onCreateImage={() => openAttachmentUploader('image')} onCreateLink={() => openAttachmentUploader('link')} onOpenFile={handleOpenAttachment} onEditFile={(attachmentId) => {
-        const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+            if (attachment) {
+              openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+            }
+          }} onDeleteFile={handleDeleteAttachment} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+          {materialsFilter === 'links' ? <ProjectFilesTab files={materialLinks} workspaceBlocks={workspaceBlocks} onCreateFile={() => openAttachmentUploader('file')} onCreateImage={() => openAttachmentUploader('image')} onCreateLink={() => openAttachmentUploader('link')} onOpenFile={handleOpenAttachment} onEditFile={(attachmentId) => {
+            const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
 
-        if (attachment) {
-          openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
-        }
-      }} onDeleteFile={handleDeleteAttachment} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+            if (attachment) {
+              openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+            }
+          }} onDeleteFile={handleDeleteAttachment} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
+        </div>
+      ) : null}
 
-      {activeTab === 'relations' ? <ProjectRelationsTab project={project} sections={projectSections} blocks={projectSectionBlocks} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} goals={relationGoals} relations={projectRelations} workspaceBlocks={workspaceBlocks} workspaceRelations={workspaceRelationsForProject} onOpenNode={handleOpenRelationNode} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} onDeleteRelation={handleDeleteRelation} onSelectRelation={setSelectedRelationId} /> : null}
+      {activeTab === 'progress' ? (
+        <div className="space-y-6">
+          <section className="ui-panel p-5 md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Прогресс</p>
+                <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Цели, этапы и движение проекта</h2>
+                <p className="mt-2 max-w-3xl text-sm text-(--text-secondary)">Понятная сводка по результату, этапам и последним изменениям без отдельной перегруженной вкладки связей.</p>
+              </div>
+              <div className="rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-4 py-3 text-sm text-(--text-secondary)">
+                Общий прогресс: <span className="font-semibold text-(--text-primary)">{completionRate}%</span>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Выполнено задач</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.completedTasks}</p></div>
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Активных задач</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.activeTasks}</p></div>
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Просрочено</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.overdueTasks}</p></div>
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Материалов</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.materialsAdded}</p></div>
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Блоков в workspace</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.blocks}</p></div>
+              <div className="ui-panel-elevated px-3 py-3"><p className="text-xs uppercase tracking-[0.14em] text-(--text-muted)">Дней активности</p><p className="mt-1 text-lg font-semibold text-(--text-primary)">{progressMetrics.activeDays}</p></div>
+            </div>
+          </section>
 
-      {activeTab === 'activity' ? <ProjectActivityTab activities={projectActivityFeed} /> : null}
+          <ProjectGoalsTab goals={projectGoalsForProject} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} workspaceBlocks={workspaceBlocks} tagSuggestions={projectTagSuggestions} onCreateGoal={handleCreateProjectGoal} onUpdateGoal={handleUpdateProjectGoal} onDeleteGoal={handleDeleteProjectGoal} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} />
+
+          <ProjectMilestonesPanel milestones={projectMilestonesForProject} tasks={linkedTasks} onCreateMilestone={handleCreateProjectMilestone} onUpdateMilestone={handleUpdateProjectMilestone} onDeleteMilestone={handleDeleteProjectMilestone} onMoveMilestone={handleMoveProjectMilestone} />
+
+          <ProjectActivityTab activities={projectActivityFeed} />
+        </div>
+      ) : null}
 
       {activeTab === 'settings' ? <ProjectSettingsTab project={project} tagSuggestions={projectTagSuggestions} onSave={handleSaveProjectSettings} onDelete={handleDeleteProject} /> : null}
+
+      <Modal
+        title="Добавить материал"
+        isOpen={isAddMaterialModalOpen}
+        onClose={() => setIsAddMaterialModalOpen(false)}
+        size="md"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => handleCreateMaterial('note')} className="ui-panel-elevated px-4 py-4 text-left transition hover:border-(--accent-border)">
+            <p className="font-semibold text-(--text-primary)">Заметка</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">Текст, исследование, инструкция или мысль.</p>
+          </button>
+          <button type="button" onClick={() => handleCreateMaterial('idea')} className="ui-panel-elevated px-4 py-4 text-left transition hover:border-(--accent-border)">
+            <p className="font-semibold text-(--text-primary)">Идея</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">Гипотеза, находка или будущая задача.</p>
+          </button>
+          <button type="button" onClick={() => handleCreateMaterial('file')} className="ui-panel-elevated px-4 py-4 text-left transition hover:border-(--accent-border)">
+            <p className="font-semibold text-(--text-primary)">Файл</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">Документ, изображение или другой артефакт.</p>
+          </button>
+          <button type="button" onClick={() => handleCreateMaterial('link')} className="ui-panel-elevated px-4 py-4 text-left transition hover:border-(--accent-border)">
+            <p className="font-semibold text-(--text-primary)">Ссылка</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">Внешний ресурс, reference или attachment.</p>
+          </button>
+        </div>
+      </Modal>
 
       <ProjectAddElementSheet
         isOpen={isAddElementSheetOpen}

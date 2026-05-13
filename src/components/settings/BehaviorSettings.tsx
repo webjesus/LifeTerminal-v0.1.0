@@ -6,10 +6,9 @@ const projectViewOptions = [
   { value: 'overview', label: 'Обзор' },
   { value: 'workspace', label: 'Рабочая область' },
   { value: 'tasks', label: 'Задачи' },
-  { value: 'notes', label: 'Заметки' },
-  { value: 'ideas', label: 'Идеи' },
-  { value: 'files', label: 'Файлы' },
-  { value: 'map', label: 'Карта связей' },
+  { value: 'materials', label: 'Материалы' },
+  { value: 'progress', label: 'Прогресс' },
+  { value: 'settings', label: 'Настройки' },
 ] as const
 
 function ToggleRow({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {

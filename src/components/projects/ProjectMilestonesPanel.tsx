@@ -66,12 +66,8 @@ export function ProjectMilestonesPanel({ milestones, tasks, onCreateMilestone, o
   return (
     <article className="ui-panel p-5 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Этапы</p>
-          <h3 className="mt-2 text-xl font-semibold text-(--text-primary)">Пошаговое движение проекта</h3>
-          <p className="mt-2 text-sm text-(--text-secondary)">Этапы помогают видеть текущую фазу, следующий шаг и прогресс по крупным кускам работы.</p>
-        </div>
-        <button type="button" onClick={openCreate} className="ui-button px-4 py-3">Добавить этап</button>
+        <p className="max-w-2xl text-sm text-(--text-secondary)">Этапы помогают видеть текущую фазу, следующий шаг и прогресс по крупным кускам работы.</p>
+        <button type="button" onClick={openCreate} className="ui-button px-4 py-2.5">Добавить этап</button>
       </div>
 
       <div className="mt-5 space-y-4">

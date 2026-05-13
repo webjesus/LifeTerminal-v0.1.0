@@ -39,6 +39,7 @@ const defaultSettings: AppSettings = {
     defaultProjectView: 'overview',
     askBeforeDelete: true,
     autoSave: true,
+    pinnedNextTaskId: null,
   },
   calendar: {
     weekStartsOn: 'monday',

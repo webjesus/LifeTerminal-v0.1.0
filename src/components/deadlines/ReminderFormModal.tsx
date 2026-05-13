@@ -18,6 +18,9 @@ type ReminderFormModalProps = {
   ideas: Idea[]
   onClose: () => void
   onSubmit: (values: ReminderFormValues) => void
+  onToggleComplete?: (reminder: Reminder) => void
+  onReschedule?: (reminder: Reminder) => void
+  onDelete?: (reminder: Reminder) => void
 }
 
 type LinkOption = {
@@ -44,6 +47,9 @@ export function ReminderFormModal({
   ideas,
   onClose,
   onSubmit,
+  onToggleComplete,
+  onReschedule,
+  onDelete,
 }: ReminderFormModalProps) {
   const linkOptions: LinkOption[] = [
     ...tasks.map((task) => ({ id: task.id, label: task.title, type: 'task' as const })),
@@ -83,8 +89,36 @@ export function ReminderFormModal({
       isOpen
       onClose={onClose}
       size="md"
+      variant="side"
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          {reminder && onDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(reminder)}
+              className="ui-button-danger w-full sm:w-auto"
+            >
+              Удалить
+            </button>
+          ) : null}
+          {reminder && onReschedule ? (
+            <button
+              type="button"
+              onClick={() => onReschedule(reminder)}
+              className="ui-button w-full sm:w-auto"
+            >
+              Перенести
+            </button>
+          ) : null}
+          {reminder && onToggleComplete ? (
+            <button
+              type="button"
+              onClick={() => onToggleComplete(reminder)}
+              className="ui-button w-full sm:w-auto"
+            >
+              {reminder.completed ? 'Вернуть' : 'Отметить выполненным'}
+            </button>
+          ) : null}
           <button
             type="submit"
             form="reminder-form"
@@ -129,7 +163,7 @@ export function ReminderFormModal({
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="reminder-date" className="text-sm text-(--text-secondary)">Дата и время</label>
+                <label htmlFor="reminder-date" className="text-sm text-(--text-secondary)">Дата и время напоминания</label>
               <input
                 id="reminder-date"
                 type="datetime-local"
@@ -138,6 +172,7 @@ export function ReminderFormModal({
                 className="ui-input"
                 required
               />
+              <p className="text-xs text-(--text-muted)">Это момент, когда система должна напомнить о действии, а не дедлайн выполнения.</p>
             </div>
             <div className="space-y-2">
               <label htmlFor="reminder-link" className="text-sm text-(--text-secondary)">Связь</label>

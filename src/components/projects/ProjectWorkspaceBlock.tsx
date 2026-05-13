@@ -22,6 +22,8 @@ interface ProjectWorkspaceBlockProps {
     directionLabel: string
     otherTitle: string
   }>
+  disableViewportPan?: boolean
+  showCanvasHandles?: boolean
   onSelect?: (blockId: string) => void
   onEdit?: (blockId: string) => void
   mode?: 'canvas' | 'list'
@@ -75,6 +77,8 @@ export function ProjectWorkspaceBlock({
   resizing,
   relationSummary,
   mobileRelations = [],
+  disableViewportPan = false,
+  showCanvasHandles = true,
   onSelect,
   onEdit,
   mode = 'list',
@@ -95,6 +99,7 @@ export function ProjectWorkspaceBlock({
   const resolvedWidth = Math.min(720, Math.max(220, block.width ?? (isImageBlock ? 320 : 280)))
   const resolvedHeight = Math.min(640, Math.max(180, block.height ?? (isImageBlock ? 280 : 170)))
   const TypeIcon = TYPE_ICONS[block.type]
+  const canShowCanvasHandles = mode === 'canvas' && showCanvasHandles
 
   function formatBytes(size?: number) {
     if (!size || size <= 0) {
@@ -121,6 +126,7 @@ export function ProjectWorkspaceBlock({
         mode === 'list' && 'cursor-pointer',
         isCanvas && 'absolute touch-none',
         (dragging || resizing) && 'cursor-grabbing',
+        selected && 'shadow-(--shadow-floating)',
       )}
       style={{
         ...(isCanvas
@@ -138,6 +144,7 @@ export function ProjectWorkspaceBlock({
               width: '100%',
             }),
       }}
+      data-no-pan={disableViewportPan ? 'true' : undefined}
       tabIndex={0}
       onClick={() => onSelect?.(block.id)}
     >
@@ -145,9 +152,11 @@ export function ProjectWorkspaceBlock({
         className={cn(
           'relative overflow-hidden rounded-[inherit] border border-[var(--workspace-block-border)] bg-[var(--workspace-block-bg)]',
           isImageBlock ? 'h-full p-0' : 'p-3',
-          selected && 'border-(--accent-border) bg-(--accent-soft)',
+          selected && 'border-(--accent-border) bg-[color-mix(in_srgb,var(--accent-soft)_40%,var(--workspace-block-bg))]',
         )}
       >
+        {selected ? <div className="pointer-events-none absolute inset-y-4 left-0 z-10 w-1 rounded-r-full bg-(--accent)" /> : null}
+
         {isImageBlock ? (
         <>
           <div className="flex h-full flex-col">
@@ -161,7 +170,7 @@ export function ProjectWorkspaceBlock({
                 {block.fileName ? <p className="mt-1 truncate text-xs text-(--text-muted)">{block.fileName}</p> : null}
               </div>
               <div className="flex items-center gap-2">
-                {mode === 'canvas' ? (
+                {canShowCanvasHandles ? (
                   <button
                     type="button"
                     data-no-pan="true"
@@ -178,18 +187,20 @@ export function ProjectWorkspaceBlock({
                     <GripVertical size={16} />
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  data-no-pan="true"
-                  aria-label="Редактировать блок"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onEdit?.(block.id)
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel-elevated) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
-                >
-                  <Pencil size={14} />
-                </button>
+                {canShowCanvasHandles ? (
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    aria-label="Редактировать блок"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEdit?.(block.id)
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel-elevated) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -238,7 +249,7 @@ export function ProjectWorkspaceBlock({
               </div>
             </div>
           </div>
-          {mode === 'canvas' ? (
+          {canShowCanvasHandles ? (
             <button
               type="button"
               data-no-pan="true"
@@ -274,33 +285,37 @@ export function ProjectWorkspaceBlock({
           </div>
           <div className="relative flex h-full flex-col justify-between p-3">
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                data-no-pan="true"
-                aria-label="Переместить блок"
-                onPointerDown={(event) => onDragStart?.(block.id, event)}
-                onPointerMove={(event) => onDragMove?.(block.id, event)}
-                onPointerUp={(event) => onDragEnd?.(block.id, event)}
-                onPointerCancel={(event) => onDragEnd?.(block.id, event)}
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) touch-none backdrop-blur-sm',
-                  dragging ? 'cursor-grabbing' : 'cursor-grab',
-                )}
-              >
-                <GripVertical size={16} />
-              </button>
-              <button
-                type="button"
-                data-no-pan="true"
-                aria-label="Редактировать блок"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onEdit?.(block.id)
-                }}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
-              >
-                <Pencil size={14} />
-              </button>
+              {canShowCanvasHandles ? (
+                <>
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    aria-label="Переместить блок"
+                    onPointerDown={(event) => onDragStart?.(block.id, event)}
+                    onPointerMove={(event) => onDragMove?.(block.id, event)}
+                    onPointerUp={(event) => onDragEnd?.(block.id, event)}
+                    onPointerCancel={(event) => onDragEnd?.(block.id, event)}
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) touch-none backdrop-blur-sm',
+                      dragging ? 'cursor-grabbing' : 'cursor-grab',
+                    )}
+                  >
+                    <GripVertical size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    aria-label="Редактировать блок"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEdit?.(block.id)
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </>
+              ) : null}
             </div>
             <div className="flex justify-end">
               <div className="h-2.5 w-14 rounded-full bg-linear-to-r from-(--border-soft) via-(--border) to-(--border-soft) opacity-70" />
@@ -316,7 +331,7 @@ export function ProjectWorkspaceBlock({
                 <span className="truncate">{block.title}</span>
               </div>
             </div>
-            {mode === 'canvas' ? (
+            {canShowCanvasHandles ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -333,55 +348,39 @@ export function ProjectWorkspaceBlock({
                 >
                   <GripVertical size={16} />
                 </button>
-                <button
-                  type="button"
-                  data-no-pan="true"
-                  aria-label="Редактировать блок"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onEdit?.(block.id)
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
-                >
-                  <Pencil size={14} />
-                </button>
+                {canShowCanvasHandles ? (
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    aria-label="Редактировать блок"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEdit?.(block.id)
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.14em] text-(--text-muted)">
-            {isVisualTemplate ? (
-              <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-0.5 text-[10px] tracking-[0.12em] text-(--accent)">Визуальный шаблон</span>
-            ) : null}
             <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2.5 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">{TYPE_LABELS[block.type]}</span>
-            {block.linkedItemType ? (
+            {!isVisualTemplate && block.linkedItemType ? (
               <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">
                 {LINKED_LABELS[block.linkedItemType]}
               </span>
             ) : null}
-            {sectionTitle ? (
+            {!block.linkedItemType && sectionTitle ? (
               <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">
                 Раздел: {sectionTitle}
               </span>
             ) : null}
-            {relationSummary?.total ? (
-              mode === 'list' ? (
-                <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">
-                  Связи: {relationSummary.total}
-                </span>
-              ) : (
-                relationSummary.items.slice(0, 2).map((item) => (
-                  <span key={item.typeLabel} className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">
-                    {item.typeLabel}: {item.count}
-                  </span>
-                ))
-              )
-            ) : null}
+            {isVisualTemplate ? <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-0.5 text-[10px] tracking-[0.12em] text-(--accent)">Шаблон</span> : null}
           </div>
-          {block.type === 'task' ? <p className="mb-1 text-xs text-(--text-secondary)">Задача проекта{block.linkedItemType === 'task' ? ' синхронизирована с глобальной задачей' : ''}</p> : null}
-          {block.type === 'note' ? <p className="mb-1 text-xs text-(--text-secondary)">Короткий preview заметки</p> : null}
-          {block.type === 'idea' ? <p className="mb-1 text-xs text-(--text-secondary)">Идея или гипотеза проекта</p> : null}
           {(block.type === 'text' || block.type === 'task' || block.type === 'note' || block.type === 'idea' || block.type === 'goal' || block.type === 'comment') && previewText ? (
-            <div className="mb-1 line-clamp-4 wrap-break-word text-sm text-(--text-secondary)">{previewText}</div>
+            <div className="mb-1 line-clamp-3 wrap-break-word text-sm text-(--text-secondary)">{previewText}</div>
           ) : null}
           {block.type === 'image' && hasImagePreview ? <img src={imageSrc} alt={block.title} className="mb-2 h-48 w-full rounded-lg object-contain" /> : null}
           {block.type === 'file' ? (
@@ -412,25 +411,14 @@ export function ProjectWorkspaceBlock({
               {block.type === 'drawing' ? 'Режим схемы появится позже. Пока можно использовать текстовый блок.' : 'Комментарий пока работает как простой текстовый блок.'}
             </div>
           ) : null}
-          {block.tags?.length > 0 ? (
+          {mode === 'list' && block.tags?.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
-              {block.tags.map((tag) => (
+              {block.tags.slice(0, 2).map((tag) => (
                 <span key={tag} className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-xs text-(--text-muted)">#{tag}</span>
               ))}
             </div>
           ) : null}
-          {mode === 'list' && mobileRelations.length > 0 ? (
-            <div className="mt-3 rounded-xl border border-(--border-soft) bg-(--panel) p-3">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Связи</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {mobileRelations.map((relation) => (
-                  <span key={relation.id} className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-xs text-(--text-secondary)">
-                    {relation.directionLabel}: {relation.typeLabel} · {relation.otherTitle}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {mode === 'list' && mobileRelations.length > 0 ? <p className="mt-3 text-xs text-(--text-muted)">Связи и детали доступны в инспекторе.</p> : null}
         </>
       )}
       </div>

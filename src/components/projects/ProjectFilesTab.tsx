@@ -52,14 +52,11 @@ export function ProjectFilesTab({ files, workspaceBlocks, onCreateFile, onCreate
   return (
     <section className="ui-panel p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Материалы проекта</p>
-          <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Файлы проекта</h2>
-        </div>
+        <p className="max-w-2xl text-sm text-(--text-muted)">Файлы, ссылки и изображения проекта без отдельного hero-блока.</p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onCreateFile} className="ui-button-accent px-4 py-3">Добавить файл</button>
-          <button type="button" onClick={onCreateImage} className="ui-button px-4 py-3">Добавить изображение</button>
-          <button type="button" onClick={onCreateLink} className="ui-button px-4 py-3">Добавить ссылку</button>
+          <button type="button" onClick={onCreateFile} className="ui-button-accent px-4 py-2.5">Добавить файл</button>
+          <button type="button" onClick={onCreateImage} className="ui-button px-4 py-2.5">Добавить изображение</button>
+          <button type="button" onClick={onCreateLink} className="ui-button px-4 py-2.5">Добавить ссылку</button>
         </div>
       </div>
 
@@ -71,14 +68,14 @@ export function ProjectFilesTab({ files, workspaceBlocks, onCreateFile, onCreate
         ))}
       </div>
 
-      <div className="mt-5 grid gap-3">
+      <div className="mt-5 overflow-hidden rounded-3xl border border-(--border) bg-(--panel)">
         {filteredFiles.length > 0 ? filteredFiles.map((file) => {
           const linkedBlockId = linkedBlockMap.get(file.id)
           const previewImage = file.dataUrl || file.previewUrl
           const fileTags = Array.isArray(file.tags) ? file.tags : []
 
           return (
-            <article key={file.id} className="ui-panel-elevated p-4">
+            <article key={file.id} className="border-b border-(--border) bg-(--panel-elevated) p-4 transition hover:bg-[color-mix(in_srgb,var(--panel-elevated)_76%,var(--panel))] last:border-b-0">
               <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
                 <div className="overflow-hidden rounded-2xl border border-(--border) bg-(--panel)">
                   {file.type === 'image' && previewImage ? (
@@ -111,7 +108,7 @@ export function ProjectFilesTab({ files, workspaceBlocks, onCreateFile, onCreate
               </div>
             </article>
           )
-        }) : <EmptyState title="В проекте пока нет материалов" description="Добавьте фото, файлы или ссылки, чтобы собрать всё нужное в одном месте." actionLabel="Добавить файл" onAction={onCreateFile} />}
+        }) : <div className="p-5"><EmptyState title="В проекте пока нет материалов" description="Добавьте фото, файлы или ссылки, чтобы собрать всё нужное в одном месте." actionLabel="Добавить файл" onAction={onCreateFile} /></div>}
       </div>
     </section>
   )

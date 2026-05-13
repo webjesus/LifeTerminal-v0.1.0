@@ -9,6 +9,7 @@ type ModalProps = {
   onClose: () => void
   footer?: ReactNode
   size?: 'sm' | 'md' | 'lg'
+  variant?: 'center' | 'side'
 }
 
 const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
@@ -17,7 +18,7 @@ const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
   lg: 'sm:max-w-4xl',
 }
 
-export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }: ModalProps) {
+export function Modal({ title, children, isOpen, onClose, footer, size = 'md', variant = 'center' }: ModalProps) {
   useLockBodyScroll(isOpen)
 
   useEffect(() => {
@@ -40,7 +41,12 @@ export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-(--overlay) p-0 sm:items-center sm:p-4">
+    <div
+      className={[
+        'fixed inset-0 z-50 flex items-end bg-(--overlay) p-0',
+        variant === 'side' ? 'justify-center sm:items-stretch sm:justify-end sm:p-0' : 'justify-center sm:items-center sm:p-4',
+      ].join(' ')}
+    >
       <button
         type="button"
         aria-label="Закрыть модальное окно"
@@ -52,11 +58,17 @@ export function Modal({ title, children, isOpen, onClose, footer, size = 'md' }:
         role="dialog"
         aria-modal="true"
         className={[
-          'relative w-full max-w-full rounded-t-[28px] ui-shadow-floating sm:rounded-3xl',
+          'relative w-full max-w-full rounded-t-[28px] ui-shadow-floating',
           sizeClasses[size],
+          variant === 'side' ? 'sm:h-full sm:max-h-full sm:max-w-[42rem] sm:rounded-none sm:rounded-l-[28px]' : 'sm:rounded-3xl',
         ].join(' ')}
       >
-        <div className="ui-surface-floating flex max-h-[92dvh] flex-col overflow-hidden rounded-t-[28px] border sm:max-h-[90vh] sm:rounded-3xl">
+        <div
+          className={[
+            'ui-surface-floating flex max-h-[92dvh] flex-col overflow-hidden rounded-t-[28px] border',
+            variant === 'side' ? 'sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-[28px]' : 'sm:max-h-[90vh] sm:rounded-3xl',
+          ].join(' ')}
+        >
           <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-(--border) sm:hidden" />
           <div className="ui-surface-elevated sticky top-0 z-20 flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
             <div className="min-w-0 flex-1">

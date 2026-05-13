@@ -1,6 +1,8 @@
 import defaultSettings from '../data/defaultSettings'
+import type { AppSettings } from '../types/settings'
 import { getStorageItem, setStorageItem, storageKeys } from './storage'
 import { isRecord, normalizeAppState } from './safe'
+import { sanitizePinnedNextTaskId } from './tasks'
 
 export const APP_STATE_STORAGE_MAP = {
   tasks: storageKeys.tasks,
@@ -77,6 +79,19 @@ function hasMeaningfulValue(value: unknown) {
   return Boolean(value)
 }
 
+function sanitizeStateSettings(state: FullLocalAppState) {
+  const tasks = Array.isArray(state.tasks) ? state.tasks : []
+  const settings = state.settings as AppSettings
+
+  return {
+    ...settings,
+    behavior: {
+      ...settings.behavior,
+      pinnedNextTaskId: sanitizePinnedNextTaskId(tasks, settings.behavior.pinnedNextTaskId),
+    },
+  }
+}
+
 export function getFullLocalAppState(): FullLocalAppState {
   const rawState = (Object.keys(APP_STATE_STORAGE_MAP) as AppStateKey[]).reduce<FullLocalAppState>(
     (accumulator, appStateKey) => {
@@ -87,11 +102,15 @@ export function getFullLocalAppState(): FullLocalAppState {
     { ...APP_STATE_DEFAULTS },
   )
 
-  return normalizeAppState(rawState) as FullLocalAppState
+  const normalizedState = normalizeAppState(rawState) as FullLocalAppState
+  normalizedState.settings = sanitizeStateSettings(normalizedState)
+
+  return normalizedState
 }
 
 export function restoreFullLocalAppState(data: unknown) {
-  const source = normalizeAppState(data)
+  const source = normalizeAppState(data) as FullLocalAppState
+  source.settings = sanitizeStateSettings(source)
 
   for (const appStateKey of Object.keys(APP_STATE_STORAGE_MAP) as AppStateKey[]) {
     const storageKey = APP_STATE_STORAGE_MAP[appStateKey]

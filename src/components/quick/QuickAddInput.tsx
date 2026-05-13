@@ -13,6 +13,7 @@ export type QuickAddResult = {
 
 type QuickAddInputProps = {
   compact?: boolean
+  todayMode?: boolean
   onCreated?: (result: QuickAddResult) => void
 }
 
@@ -29,13 +30,14 @@ function supportsDate(kind: QuickAddKind) {
   return kind === 'task' || kind === 'goal' || kind === 'reminder'
 }
 
-export function QuickAddInput({ compact, onCreated }: QuickAddInputProps) {
+export function QuickAddInput({ compact, todayMode = false, onCreated }: QuickAddInputProps) {
   const { settings } = useAppSettings()
   const [kind, setKind] = useState<QuickAddKind>('task')
   const [text, setText] = useState('')
   const [priority, setPriority] = useState<TaskPriority>(settings.behavior.defaultTaskPriority)
   const [deadlineDate, setDeadlineDate] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
 
   const { setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { setValue: setNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
@@ -46,12 +48,26 @@ export function QuickAddInput({ compact, onCreated }: QuickAddInputProps) {
 
   const canSubmit = useMemo(() => text.trim().length > 0, [text])
   const isCompact = Boolean(compact)
+  const kindOptions = todayMode
+    ? [
+        { id: 'task', label: 'Задача' },
+        { id: 'note', label: 'Заметка' },
+        { id: 'idea', label: 'Идея' },
+      ] as const
+    : [
+        { id: 'task', label: 'Задача' },
+        { id: 'note', label: 'Заметка' },
+        { id: 'idea', label: 'Идея' },
+        { id: 'goal', label: 'Цель' },
+        { id: 'reminder', label: 'Напоминание' },
+      ] as const
 
   function resetForm() {
     setText('')
     setDeadlineDate('')
     setProjectId('')
     setPriority(settings.behavior.defaultTaskPriority)
+    setIsAdvancedOpen(false)
   }
 
   function toIsoNoon(dateValue: string) {
@@ -185,21 +201,13 @@ export function QuickAddInput({ compact, onCreated }: QuickAddInputProps) {
     <div className={isCompact ? 'space-y-3' : 'space-y-4'}>
       <div className="max-w-full rounded-[26px] border border-(--border) bg-(--panel) p-3.5 shadow-(--shadow-soft) sm:p-4">
         <div className="ui-filter-scroll -mx-1 px-1 md:mx-0 md:px-0">
-          {(
-            [
-              { id: 'task', label: 'Задача' },
-              { id: 'note', label: 'Заметка' },
-              { id: 'idea', label: 'Идея' },
-              { id: 'goal', label: 'Цель' },
-              { id: 'reminder', label: 'Напоминание' },
-            ] as const
-          ).map((item) => (
+          {kindOptions.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setKind(item.id)}
               className={[
-                'shrink-0 rounded-full border px-3.5 py-2 text-[11px] uppercase tracking-[0.12em] transition-colors duration-200',
+                'shrink-0 rounded-full border px-3.5 py-2 text-[11px] uppercase tracking-[0.08em] transition-colors duration-200',
                 kind === item.id
                   ? 'border-(--accent) bg-(--accent-soft) text-(--accent)'
                   : 'border-(--border) bg-(--panel-elevated) text-(--text-muted) hover:border-(--accent) hover:text-(--text-primary)',
@@ -210,90 +218,141 @@ export function QuickAddInput({ compact, onCreated }: QuickAddInputProps) {
           ))}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-start">
+        <div className={isCompact ? 'mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]' : 'mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-start'}>
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-(--accent)">+</span>
             <input
               value={text}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={handleTextKeyDown}
-              placeholder="Добавьте задачу, заметку или идею..."
+              placeholder={todayMode ? 'Быстро добавить задачу, идею или заметку…' : 'Добавьте задачу, заметку или идею...'}
               className="h-11 w-full min-w-0 rounded-2xl border border-(--border) bg-(--panel-elevated) pl-8 pr-3 text-sm text-(--text-primary) placeholder:text-(--text-muted) outline-none transition-colors duration-200 focus:border-(--accent)"
             />
           </div>
 
-          <select
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            className="h-11 w-full min-w-0 rounded-2xl border border-(--border) bg-(--panel-elevated) px-3 text-sm text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
-          >
-            <option value="">Без проекта</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.title}
-              </option>
-            ))}
-          </select>
+          {isCompact ? (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 sm:col-span-2">
+              <select
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                className="h-11 w-full min-w-0 rounded-2xl border border-(--border) bg-(--panel-elevated) px-3 text-sm text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
+              >
+                <option value="">Без проекта</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
 
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={handleSubmit}
-            className={[
-              'h-11 w-full rounded-full border px-4 text-sm font-medium transition-colors duration-200 lg:w-auto',
-              canSubmit
-                ? 'border-(--accent) bg-(--accent) text-white hover:opacity-90'
-                : 'cursor-not-allowed border-(--border) bg-(--panel-elevated) text-(--text-muted)',
-            ].join(' ')}
-          >
-            Добавить
-          </button>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(180px,220px)_1fr] lg:items-start">
-          {supportsDate(kind) ? (
-            <input
-              type="date"
-              value={deadlineDate}
-              onChange={(event) => setDeadlineDate(event.target.value)}
-              className="h-11 w-full rounded-2xl border border-(--border) bg-(--panel-elevated) px-3 text-sm text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
-            />
-          ) : (
-            <div className="grid h-11 place-items-center rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3 text-center text-sm text-(--text-muted)">
-              Дата не требуется
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+                className={[
+                  'h-11 rounded-full border px-4 text-sm font-medium transition-colors duration-200',
+                  canSubmit
+                    ? 'border-(--accent) bg-(--accent) text-white hover:opacity-90'
+                    : 'cursor-not-allowed border-(--border) bg-(--panel-elevated) text-(--text-muted)',
+                ].join(' ')}
+              >
+                Добавить
+              </button>
             </div>
-          )}
+          ) : null}
 
-          {kind === 'task' ? (
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  { id: 'low', label: 'Низкий' },
-                  { id: 'medium', label: 'Средний' },
-                  { id: 'high', label: 'Высокий' },
-                ] as const
-              ).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setPriority(item.id)}
-                  className={[
-                    'min-h-10 rounded-full border px-3.5 text-[11px] uppercase tracking-[0.12em] transition-colors duration-200',
-                    priority === item.id
-                      ? 'border-(--accent) bg-(--accent-soft) text-(--accent)'
-                      : 'border-(--border) bg-(--panel-elevated) text-(--text-muted) hover:border-(--accent)',
-                  ].join(' ')}
-                >
-                  {item.label}
-                </button>
+          {!isCompact ? (
+            <select
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              className="h-11 w-full min-w-0 rounded-2xl border border-(--border) bg-(--panel-elevated) px-3 text-sm text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
+            >
+              <option value="">Без проекта</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.title}
+                </option>
               ))}
-            </div>
-          ) : (
-            <div className="grid h-11 place-items-center rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3 text-center text-sm text-(--text-muted)">
-              Нажмите Enter или кнопку «Добавить»
-            </div>
-          )}
+            </select>
+          ) : null}
+
+          {!isCompact ? (
+            <button
+              type="button"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+              className={[
+                'h-11 w-full rounded-full border px-4 text-sm font-medium transition-colors duration-200 lg:w-auto',
+                canSubmit
+                  ? 'border-(--accent) bg-(--accent) text-white hover:opacity-90'
+                  : 'cursor-not-allowed border-(--border) bg-(--panel-elevated) text-(--text-muted)',
+              ].join(' ')}
+            >
+              Добавить
+            </button>
+          ) : null}
         </div>
+
+        {isCompact ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setIsAdvancedOpen((current) => !current)}
+              className="text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+            >
+              {isAdvancedOpen ? 'Скрыть дополнительные поля' : 'Дополнительно'}
+            </button>
+          </div>
+        ) : null}
+
+        {!isCompact || isAdvancedOpen ? (
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(180px,220px)_1fr] lg:items-start">
+            {supportsDate(kind) ? (
+              <input
+                type="date"
+                value={deadlineDate}
+                onChange={(event) => setDeadlineDate(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-(--border) bg-(--panel-elevated) px-3 text-sm text-(--text-primary) outline-none transition-colors duration-200 focus:border-(--accent)"
+              />
+            ) : (
+              <div className="grid h-11 place-items-center rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3 text-center text-sm text-(--text-muted)">
+                Дата не требуется
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {kind === 'task' ? (
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { id: 'low', label: 'Низкий' },
+                      { id: 'medium', label: 'Средний' },
+                      { id: 'high', label: 'Высокий' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPriority(item.id)}
+                      className={[
+                        'min-h-10 rounded-full border px-3.5 text-[11px] uppercase tracking-[0.08em] transition-colors duration-200',
+                        priority === item.id
+                          ? 'border-(--accent) bg-(--accent-soft) text-(--accent)'
+                          : 'border-(--border) bg-(--panel-elevated) text-(--text-muted) hover:border-(--accent)',
+                      ].join(' ')}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid h-11 place-items-center rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3 text-center text-sm text-(--text-muted)">
+                  Нажмите Enter или кнопку «Добавить»
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

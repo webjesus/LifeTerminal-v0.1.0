@@ -30,11 +30,8 @@ export function ProjectNotesTab({ notes, workspaceBlocks, onCreateNote, onOpenNo
   return (
     <section className="ui-panel p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Заметки проекта</p>
-          <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Заметки проекта</h2>
-        </div>
-        <button type="button" onClick={onCreateNote} className="ui-button-accent px-4 py-3">Добавить заметку в проект</button>
+        <p className="max-w-2xl text-sm text-(--text-muted)">Заметки и материалы проекта с быстрым переходом в рабочую область.</p>
+        <button type="button" onClick={onCreateNote} className="ui-button-accent px-4 py-2.5">Добавить заметку</button>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/projects/EmptyState'
 import { FileCard } from '../components/files/FileCard'
 import { FileFormModal, type FileFormValues } from '../components/files/FileFormModal'
@@ -237,47 +238,25 @@ export function FilesPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <header className="ui-panel p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-(--text-muted)">Asset Library</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Файлы</h1>
-            <p className="page-description mt-3 max-w-3xl text-sm text-(--text-muted) md:text-base">
-              Локальная система файлов и фото. Для обычных файлов сохраняется путь на компьютере, для фотографий сохраняется превью, заметка к фото и связи с рабочими сущностями Life OS.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        section="files"
+        title="Файлы"
+        description="Файлы и изображения как материалы проекта. На карточке только главное, детали открываются внутри."
+        actionLabel="Добавить файл"
+        onAction={openCreateModal}
+      />
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="ui-button-accent px-5 py-3"
-          >
-            Добавить файл
-          </button>
+      <section className="ui-panel p-4 md:p-4.5">
+        <div className="flex flex-wrap gap-2 text-sm text-(--text-secondary)">
+          <span className="ui-chip">Всего {stats.total}</span>
+          <span className="ui-chip">Фото {stats.images}</span>
+          <span className="ui-chip">Со связями {stats.linked}</span>
+          <span className="ui-chip">С тегами {stats.tagged}</span>
         </div>
+      </section>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Всего</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.total}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Фото</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.images}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Со связями</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.linked}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">С тегами</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.tagged}</p>
-          </div>
-        </div>
-      </header>
-
-      <section className="ui-panel p-5">
+      <section className="ui-panel p-4 md:p-5">
         <label className="block text-sm text-(--text-secondary)" htmlFor="files-search">
           Поиск по названию, описанию, пути и тегам
         </label>

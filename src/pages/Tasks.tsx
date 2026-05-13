@@ -1,26 +1,29 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EmptyState } from '../components/tasks/EmptyState'
+import { PageHeader } from '../components/PageHeader'
 import { TaskCard } from '../components/tasks/TaskCard'
 import { TaskFormModal, type TaskFormValues } from '../components/tasks/TaskFormModal'
-import { taskPriorityLabels } from '../components/tasks/taskMeta'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { FileItem, Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task, TaskPriority } from '../types'
+import type { FileItem, Goal, Idea, Note, Project, ProjectSection, ProjectWorkspaceBlock, Relation, Task } from '../types'
 import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
 import { detachWorkspaceBlocksFromLinkedEntity, syncWorkspaceBlocksFromLinkedEntity } from '../utils/syncWorkspaceBlocks'
+import { compareTasksForNextSelection, getNextTask, isTaskDueToday, isTaskOverdue, NEXT_TASK_HELP_TEXT, NEXT_TASK_TOOLTIP } from '../utils/tasks'
 
-type TaskFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'completed' | 'priority'
+type TaskFilter = 'all' | 'today' | 'upcoming' | 'completed'
 type ModalMode = 'create' | 'edit' | 'view' | null
+type TaskSection = {
+  key: string
+  label: string
+  items: Task[]
+}
 
 const filterLabels: Record<TaskFilter, string> = {
-  all: 'Все задачи',
+  all: 'Все',
   today: 'Сегодня',
-  overdue: 'Просроченные',
-  upcoming: 'Ближайшие',
+  upcoming: 'Предстоящие',
   completed: 'Выполненные',
-  priority: 'По приоритету',
 }
 
 function getStartOfDay(date: Date) {
@@ -35,30 +38,8 @@ function parseDateOnly(value: string) {
   return new Date(`${value}T12:00:00`)
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function isTaskOverdue(task: Task, now: Date) {
-  if (!task.deadline || task.status === 'completed') {
-    return false
-  }
-
-  return parseDateOnly(task.deadline.slice(0, 10)) < getStartOfDay(now)
-}
-
 function isTaskForToday(task: Task, now: Date) {
-  if (!task.deadline) {
-    return false
-  }
-
-  const deadline = parseDateOnly(task.deadline.slice(0, 10))
-  const today = getStartOfDay(now)
-
-  return deadline.getTime() === today.getTime()
+  return isTaskDueToday(task, now)
 }
 
 function isTaskUpcoming(task: Task, now: Date) {
@@ -66,7 +47,7 @@ function isTaskUpcoming(task: Task, now: Date) {
     return false
   }
 
-  const today = getStartOfDay(now)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const deadline = parseDateOnly(task.deadline.slice(0, 10))
   const diffInDays = Math.ceil((deadline.getTime() - today.getTime()) / 86400000)
 
@@ -74,26 +55,7 @@ function isTaskUpcoming(task: Task, now: Date) {
 }
 
 function compareTasks(a: Task, b: Task) {
-  const aCompleted = a.status === 'completed'
-  const bCompleted = b.status === 'completed'
-
-  if (aCompleted !== bCompleted) {
-    return Number(aCompleted) - Number(bCompleted)
-  }
-
-  if (a.deadline && b.deadline) {
-    return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
-  }
-
-  if (a.deadline) {
-    return -1
-  }
-
-  if (b.deadline) {
-    return 1
-  }
-
-  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  return compareTasksForNextSelection(a, b)
 }
 
 function buildTaskFromForm(values: TaskFormValues, existingTask?: Task): Task {
@@ -133,7 +95,6 @@ export function TasksPage() {
   const { value: sections } = useLocalStorage<ProjectSection[]>(storageKeys.projectSections, [])
   const { value: relations } = useLocalStorage<Relation[]>(storageKeys.relations, [])
   const [activeFilter, setActiveFilter] = useState<TaskFilter>('all')
-  const [priorityFilter, setPriorityFilter] = useState<TaskPriority>('high')
   const [modalMode, setModalMode] = useState<ModalMode>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
 
@@ -149,19 +110,66 @@ export function TasksPage() {
     switch (activeFilter) {
       case 'today':
         return sortedTasks.filter((task) => isTaskForToday(task, now))
-      case 'overdue':
-        return sortedTasks.filter((task) => isTaskOverdue(task, now))
       case 'upcoming':
-        return sortedTasks.filter((task) => isTaskUpcoming(task, now))
+        return sortedTasks.filter((task) => isTaskUpcoming(task, now) || isTaskOverdue(task, now))
       case 'completed':
         return sortedTasks.filter((task) => task.status === 'completed')
-      case 'priority':
-        return sortedTasks.filter((task) => task.priority === priorityFilter)
       case 'all':
       default:
         return sortedTasks
     }
-  }, [activeFilter, priorityFilter, tasks])
+  }, [activeFilter, tasks])
+
+  const nextTaskSelection = useMemo(() => getNextTask(filteredTasks), [filteredTasks])
+  const leadTaskId = nextTaskSelection.task?.id ?? null
+
+  const taskSections = useMemo<TaskSection[]>(() => {
+    const now = new Date()
+    const sectionsMap = new Map<string, TaskSection>()
+
+    const resolveSection = (task: Task) => {
+      if (task.id === leadTaskId) {
+        return { key: 'next', label: 'Следующая' }
+      }
+
+      if (task.status === 'completed') {
+        return { key: 'completed', label: 'Выполненные' }
+      }
+
+      if (isTaskOverdue(task, now)) {
+        return { key: 'overdue', label: 'Требуют внимания' }
+      }
+
+      if (isTaskForToday(task, now)) {
+        return { key: 'today', label: 'Сегодня' }
+      }
+
+      if (isTaskUpcoming(task, now)) {
+        return { key: 'upcoming', label: 'Предстоящие' }
+      }
+
+      return { key: 'later', label: 'Без срока' }
+    }
+
+    filteredTasks.forEach((task) => {
+      const sectionMeta = resolveSection(task)
+      const existingSection = sectionsMap.get(sectionMeta.key)
+
+      if (existingSection) {
+        existingSection.items.push(task)
+        return
+      }
+
+      sectionsMap.set(sectionMeta.key, {
+        ...sectionMeta,
+        items: [task],
+      })
+    })
+
+    const orderedKeys = ['next', 'overdue', 'today', 'upcoming', 'later', 'completed']
+
+    return orderedKeys.map((key) => sectionsMap.get(key)).filter((section): section is TaskSection => Boolean(section))
+  }, [filteredTasks, leadTaskId])
 
   const stats = useMemo(() => {
     const now = new Date()
@@ -240,7 +248,7 @@ export function TasksPage() {
     }
 
     setTasks((currentTasks) => currentTasks.filter((item) => item.id !== task.id))
-  setProjectWorkspaceBlocks((currentBlocks) => detachWorkspaceBlocksFromLinkedEntity(currentBlocks, 'task', task.id))
+    setProjectWorkspaceBlocks((currentBlocks) => detachWorkspaceBlocksFromLinkedEntity(currentBlocks, 'task', task.id))
     deleteRelationsForItem(task.id)
 
     if (selectedTaskId === task.id) {
@@ -296,112 +304,123 @@ export function TasksPage() {
     )
   }
 
+  function handleInlineUpdate(task: Task, patch: Partial<Pick<Task, 'deadline' | 'priority'>>) {
+    const timestamp = new Date().toISOString()
+    const updatedTask: Task = {
+      ...task,
+      ...patch,
+      updatedAt: timestamp,
+    }
+
+    setTasks((currentTasks) => currentTasks.map((item) => (item.id === task.id ? updatedTask : item)))
+    setProjectWorkspaceBlocks((currentBlocks) =>
+      syncWorkspaceBlocksFromLinkedEntity({ entityType: 'task', entity: updatedTask, blocks: currentBlocks }),
+    )
+  }
+
+  function handleUpdateTaskDeadline(task: Task, nextDeadline: string | null) {
+    const normalizedDeadline = nextDeadline ? toDateInputValue(nextDeadline) : null
+    handleInlineUpdate(task, { deadline: normalizedDeadline })
+  }
+
+  function handleUpdateTaskPriority(task: Task, nextPriority: Task['priority']) {
+    if (task.priority === nextPriority) {
+      return
+    }
+
+    handleInlineUpdate(task, { priority: nextPriority })
+  }
+
   return (
-    <section className="space-y-6">
-      <header className="rounded-2xl border border-(--border) bg-(--panel) p-5 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Task Control</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Задачи</h1>
-            <p className="page-description mt-2 max-w-2xl text-sm text-(--text-muted) md:text-base">
-              Полноценный локальный рабочий контур для задач с фильтрами, дедлайнами и сохранением после перезагрузки.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        section="tasks"
+        title="Задачи"
+        description="Короткий список того, что нужно сделать сейчас. Детали открываются по клику."
+        actionLabel="Добавить задачу"
+        onAction={openCreateModal}
+      />
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="ui-button-accent px-5 py-3"
-          >
-            Добавить задачу
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Всего</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.total}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">На сегодня</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.today}</p>
-          </div>
-          <div className="ui-stat-card border-(--danger-border) bg-(--danger-bg)">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Просрочено</p>
-            <p className="mt-2 text-2xl font-semibold text-(--danger-text)">{stats.overdue}</p>
-          </div>
-          <div className="ui-stat-card border-(--completed-border) bg-(--completed-bg)">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Выполнено</p>
-            <p className="mt-2 text-2xl font-semibold text-(--completed-text)">{stats.completed}</p>
-          </div>
-        </div>
-      </header>
-
-      <section className="ui-panel p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="ui-filter-scroll">
-            {(Object.keys(filterLabels) as TaskFilter[]).map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setActiveFilter(filter)}
-                className={[
-                  'ui-filter-pill',
-                  activeFilter === filter
-                    ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
-                    : 'hover:border-(--accent-border) hover:text-(--text-primary)',
-                ].join(' ')}
-              >
-                {filterLabels[filter]}
-              </button>
-            ))}
-          </div>
-
-          {activeFilter === 'priority' ? (
-            <div className="ui-filter-scroll md:justify-end">
-              {(Object.keys(taskPriorityLabels) as TaskPriority[]).map((priority) => (
-                <button
-                  key={priority}
-                  type="button"
-                  onClick={() => setPriorityFilter(priority)}
-                  className={[
-                    'ui-filter-pill',
-                    priorityFilter === priority
-                      ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
-                      : 'hover:border-(--accent-border) hover:text-(--text-primary)',
-                  ].join(' ')}
-                >
-                  {taskPriorityLabels[priority]}
-                </button>
-              ))}
-            </div>
+      <section className="ui-panel p-4 md:p-4.5">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-(--text-muted)">
+          {leadTaskId ? (
+            <span title={NEXT_TASK_TOOLTIP} className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-1 text-(--accent)">
+              {NEXT_TASK_HELP_TEXT}
+            </span>
           ) : null}
+          <span>Всего {stats.total}</span>
+          <span>Сегодня {stats.today}</span>
+          <span className={stats.overdue > 0 ? 'text-(--danger-text)' : ''}>Просрочено {stats.overdue}</span>
+          <span className={stats.completed > 0 ? 'text-(--completed-text)' : ''}>Выполнено {stats.completed}</span>
+        </div>
+
+        <div className="mt-3 ui-filter-scroll">
+          {(Object.keys(filterLabels) as TaskFilter[]).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setActiveFilter(filter)}
+              className={[
+                'ui-filter-pill',
+                activeFilter === filter
+                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
+                  : 'hover:border-(--accent-border) hover:text-(--text-primary)',
+              ].join(' ')}
+            >
+              {filterLabels[filter]}
+            </button>
+          ))}
         </div>
       </section>
 
-      {filteredTasks.length === 0 ? (
-        <EmptyState
-          title="Задачи пока не найдены"
-          description="Создайте первую задачу или смените фильтр. Все изменения будут сохранены в localStorage и останутся после перезагрузки страницы."
-          actionLabel="Создать задачу"
-          onAction={openCreateModal}
-        />
+      {filteredTasks.length === 0 || (activeFilter !== 'completed' && leadTaskId === null && filteredTasks.every((task) => task.status === 'completed')) ? (
+        <section className="ui-panel p-5 md:p-6">
+          <p className="text-xs uppercase tracking-[0.18em] text-(--text-muted)">Задачи</p>
+          <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">{filteredTasks.length === 0 ? 'Задач пока нет' : 'Все активные задачи выполнены'}</h2>
+          <p className="mt-2 max-w-2xl text-sm text-(--text-muted)">{filteredTasks.length === 0 ? 'Добавьте первое действие, чтобы начать день.' : 'Следующая задача появится автоматически, когда вы добавите новое действие или вернёте задачу в работу.'}</p>
+          <button type="button" onClick={openCreateModal} className="ui-button-accent mt-4 px-4 py-2.5">Добавить задачу</button>
+        </section>
       ) : (
-        <div className="grid gap-4 2xl:grid-cols-2">
-          {filteredTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              isOverdue={isTaskOverdue(task, new Date())}
-              projectTitle={projects.find((project) => project.id === task.projectId)?.title ?? null}
-              onOpen={openViewModal}
-              onEdit={openEditModal}
-              onToggleComplete={handleToggleComplete}
-              onExtendDeadline={handleExtendDeadline}
-              onDelete={handleDeleteTask}
-            />
-          ))}
-        </div>
+        <section className="ui-panel p-0">
+          <div className="overflow-hidden rounded-[inherit] border border-(--border) bg-(--panel)">
+            <div className="hidden grid-cols-[44px_minmax(0,1.8fr)_minmax(130px,0.9fr)_110px_110px_120px_48px] items-center gap-3 border-b border-(--border) px-4 py-3 text-[11px] uppercase tracking-[0.14em] text-(--text-muted) md:grid">
+              <span>Статус</span>
+              <span>Задача</span>
+              <span>Проект</span>
+              <span>Дедлайн</span>
+              <span>Приоритет</span>
+              <span>Действие</span>
+              <span className="text-right">Меню</span>
+            </div>
+
+            <div>
+            {taskSections.map((section) => (
+              <div key={section.key}>
+                <div className="border-b border-(--border) px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-(--text-muted) md:px-4">
+                  {section.label}
+                </div>
+                {section.items.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    isLead={task.id === leadTaskId}
+                    isOverdue={isTaskOverdue(task, new Date())}
+                    projectTitle={projects.find((project) => project.id === task.projectId)?.title ?? null}
+                    closeOnChangeKey={activeFilter}
+                    onOpen={openViewModal}
+                    onEdit={openEditModal}
+                    onToggleComplete={handleToggleComplete}
+                    onExtendDeadline={handleExtendDeadline}
+                    onUpdateDeadline={handleUpdateTaskDeadline}
+                    onUpdatePriority={handleUpdateTaskPriority}
+                    onDelete={handleDeleteTask}
+                  />
+                ))}
+              </div>
+            ))}
+            </div>
+          </div>
+        </section>
       )}
 
       {modalMode ? (
@@ -415,18 +434,6 @@ export function TasksPage() {
           onClose={closeModal}
           onSubmit={modalMode === 'create' ? handleCreateTask : handleUpdateTask}
         />
-      ) : null}
-
-      {selectedTask && modalMode === 'view' ? (
-        <div className="ui-panel p-5 text-sm text-(--text-muted)">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Последний выбор</p>
-              <p className="mt-1 text-(--text-primary)">{selectedTask.title}</p>
-            </div>
-            <p>Создана {formatDateTime(selectedTask.createdAt)} · Обновлена {formatDateTime(selectedTask.updatedAt)}</p>
-          </div>
-        </div>
       ) : null}
     </section>
   )

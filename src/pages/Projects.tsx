@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/projects/EmptyState'
 import { ProjectCard } from '../components/projects/ProjectCard'
 import { ProjectFormModal, type ProjectFormValues } from '../components/projects/ProjectFormModal'
@@ -251,41 +252,24 @@ export function ProjectsPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <header className="ui-panel p-5 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Проекты</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary)">Проекты</h1>
-            <p className="mt-2 max-w-3xl text-sm text-(--text-secondary)">
-              Создавайте рабочие пространства для задач, идей, заметок, файлов и целей.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        section="projects"
+        title="Проекты"
+        description="Оглавление ваших проектов: что активно, какой прогресс и куда зайти дальше."
+        actionLabel="Создать проект"
+        onAction={openCreateModal}
+      />
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="ui-button-accent px-5 py-3 lg:self-start"
-          >
-            Создать проект
-          </button>
+      <section className="ui-panel p-4 md:p-4.5">
+        <div className="flex flex-wrap gap-2 text-sm text-(--text-secondary)">
+          <span className="ui-chip">Всего {stats.total}</span>
+          <span className="ui-chip">Активные {stats.active}</span>
+          <span className="ui-chip">На паузе {stats.inactive}</span>
+          <span className={stats.completed > 0 ? 'ui-chip border-(--completed-border) bg-(--completed-bg) text-(--completed-text)' : 'ui-chip'}>Завершённые {stats.completed}</span>
+          <span className="ui-chip">Архив {stats.archived}</span>
         </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            { label: 'Всего', value: stats.total },
-            { label: 'Активные', value: stats.active },
-            { label: 'На паузе', value: stats.inactive },
-            { label: 'Завершённые', value: stats.completed },
-            { label: 'Архив', value: stats.archived },
-          ].map((item) => (
-            <div key={item.label} className="rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{item.label}</p>
-              <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{item.value}</p>
-            </div>
-          ))}
-        </div>
-      </header>
+      </section>
 
       {sortedProjects.length > 0 ? (
         <div className="grid gap-5 2xl:grid-cols-2">

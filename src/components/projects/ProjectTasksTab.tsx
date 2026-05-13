@@ -59,11 +59,8 @@ export function ProjectTasksTab({ tasks, workspaceBlocks, onCreateTask, onOpenTa
   return (
     <section className="ui-panel p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Задачи проекта</p>
-          <h2 className="mt-2 text-2xl font-semibold text-(--text-primary)">Задачи проекта</h2>
-        </div>
-        <button type="button" onClick={onCreateTask} className="ui-button-accent px-4 py-3">Добавить задачу в проект</button>
+        <p className="max-w-2xl text-sm text-(--text-muted)">Список задач проекта и переход к связанным блокам рабочей области.</p>
+        <button type="button" onClick={onCreateTask} className="ui-button-accent px-4 py-2.5">Добавить задачу</button>
       </div>
 
       <div className="mt-4 ui-filter-scroll">
@@ -79,13 +76,13 @@ export function ProjectTasksTab({ tasks, workspaceBlocks, onCreateTask, onOpenTa
         ))}
       </div>
 
-      <div className="mt-5 grid gap-3">
+      <div className="mt-5 overflow-hidden rounded-3xl border border-(--border) bg-(--panel)">
         {filteredTasks.length > 0 ? filteredTasks.map((task) => {
           const linkedBlockId = linkedBlockMap.get(task.id)
           const taskTags = Array.isArray(task.tags) ? task.tags : []
 
           return (
-            <article key={task.id} className="ui-panel-elevated p-4">
+            <article key={task.id} className="border-b border-(--border) bg-(--panel-elevated) p-4 transition hover:bg-[color-mix(in_srgb,var(--panel-elevated)_76%,var(--panel))] last:border-b-0">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 flex-1 text-left">
                   <div className="flex flex-wrap gap-2"><span className="ui-chip">{task.status}</span><span className="ui-chip">{task.priority}</span>{task.deadline ? <span className="ui-chip">{new Date(task.deadline).toLocaleDateString('ru-RU')}</span> : null}</div>
@@ -97,7 +94,7 @@ export function ProjectTasksTab({ tasks, workspaceBlocks, onCreateTask, onOpenTa
               </div>
             </article>
           )
-        }) : <EmptyState title="В проекте пока нет задач" description="Добавьте первое действие, чтобы проект начал двигаться." actionLabel="Добавить задачу" onAction={onCreateTask} />}
+        }) : <div className="p-5"><EmptyState title="В проекте пока нет задач" description="Добавьте первое действие, чтобы проект начал двигаться." actionLabel="Добавить задачу" onAction={onCreateTask} /></div>}
       </div>
     </section>
   )

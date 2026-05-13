@@ -1,5 +1,6 @@
 import type { Idea, Project, ProjectActivity, ProjectGoal, ProjectMilestone, Task } from '../../types'
 import { calculateGoalProgress, calculateMilestoneProgress } from '../../utils/projectProgress'
+import { getNextTask, getNextTaskCandidates, NEXT_TASK_HELP_TEXT, NEXT_TASK_TOOLTIP } from '../../utils/tasks'
 import { ProjectMilestonesPanel, type ProjectMilestoneFormValues } from './ProjectMilestonesPanel'
 import { projectGoalStatusLabels, projectPriorityLabels, projectStatusLabels } from './projectMeta'
 
@@ -65,10 +66,9 @@ export function ProjectOverviewTab({
   const primaryGoalProgress = primaryGoal ? calculateGoalProgress(primaryGoal, tasks) : completionRate
   const currentMilestone = milestones.find((milestone) => milestone.status === 'in_progress') ?? milestones.find((milestone) => milestone.status !== 'completed') ?? null
   const currentMilestoneProgress = currentMilestone ? calculateMilestoneProgress(currentMilestone, tasks) : 0
-  const nearestTasks = [...tasks]
-    .filter((task) => task.deadline && task.status !== 'completed')
-    .sort((a, b) => new Date(a.deadline ?? '').getTime() - new Date(b.deadline ?? '').getTime())
-    .slice(0, 4)
+  const nextTaskSelection = getNextTask(tasks)
+  const nextTask = nextTaskSelection.task
+  const nearestTasks = getNextTaskCandidates(tasks).slice(0, 4)
   const overdueTaskList = [...tasks]
     .filter((task) => task.deadline && task.status !== 'completed' && new Date(task.deadline).getTime() < Date.now())
     .sort((a, b) => new Date(a.deadline ?? '').getTime() - new Date(b.deadline ?? '').getTime())
@@ -130,6 +130,7 @@ export function ProjectOverviewTab({
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Ближайшие действия</p>
               <p className="mt-2 text-sm text-(--text-secondary)">Главные следующие шаги, которые двигают проект вперёд.</p>
+              {nextTask ? <p title={NEXT_TASK_TOOLTIP} className="mt-2 text-xs text-(--text-muted)">{NEXT_TASK_HELP_TEXT}</p> : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={onCreateTask} className="ui-button-accent px-4 py-2 text-sm">Добавить ближайшее действие</button>
@@ -138,8 +139,11 @@ export function ProjectOverviewTab({
           </div>
           <div className="mt-4 space-y-3">
             {nearestTasks.length > 0 ? nearestTasks.map((task) => (
-              <button key={task.id} type="button" onClick={() => onOpenTask(task.id)} className="w-full rounded-2xl border border-(--border) bg-(--panel-elevated) p-4 text-left">
-                <div className="flex flex-wrap gap-2"><span className="ui-chip">{task.status}</span><span className="ui-chip">{task.priority}</span></div>
+              <button key={task.id} type="button" onClick={() => onOpenTask(task.id)} className={[
+                'w-full rounded-2xl border bg-(--panel-elevated) p-4 text-left',
+                task.id === nextTask?.id ? 'border-(--accent-border) bg-[color-mix(in_srgb,var(--accent-soft)_36%,var(--panel-elevated))]' : 'border-(--border)',
+              ].join(' ')}>
+                <div className="flex flex-wrap gap-2">{task.id === nextTask?.id ? <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--accent)">Следующая</span> : null}<span className="ui-chip">{task.status}</span><span className="ui-chip">{task.priority}</span></div>
                 <p className="mt-3 text-sm font-semibold text-(--text-primary)">{task.title}</p>
                 <p className="mt-1 text-xs text-(--text-muted)">{formatDate(task.deadline)}</p>
               </button>

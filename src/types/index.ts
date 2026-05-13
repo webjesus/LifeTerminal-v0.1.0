@@ -295,6 +295,7 @@ export type Reminder = {
   linkedItemType: LinkedItemType | null
   completed: boolean
   createdAt: ISODateString
+  updatedAt?: ISODateString
 }
 
 export type ProjectActivityType =

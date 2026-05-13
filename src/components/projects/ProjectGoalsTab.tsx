@@ -160,12 +160,8 @@ export function ProjectGoalsTab({
   return (
     <section className="ui-panel p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Цели проекта</p>
-          <h2 className="mt-2 text-xl font-semibold text-(--text-primary)">Фокус на результате</h2>
-          <p className="mt-2 text-sm text-(--text-secondary)">Цели задают направление, объединяют задачи и помогают считать реальный прогресс проекта.</p>
-        </div>
-        <button type="button" onClick={openCreateModal} className="ui-button-accent px-4 py-3">Добавить цель</button>
+        <p className="max-w-2xl text-sm text-(--text-secondary)">Цели задают направление, объединяют задачи и помогают считать реальный прогресс проекта.</p>
+        <button type="button" onClick={openCreateModal} className="ui-button-accent px-4 py-2.5">Добавить цель</button>
       </div>
 
       <div className="mt-5 grid gap-4">

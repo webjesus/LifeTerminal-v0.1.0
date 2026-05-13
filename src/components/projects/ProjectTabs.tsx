@@ -1,34 +1,28 @@
 import { cn } from '../../utils/cn'
 
-export type ProjectTab = 'overview' | 'workspace' | 'goals' | 'tasks' | 'notes' | 'ideas' | 'files' | 'relations' | 'activity' | 'settings'
+export type ProjectLegacyTab = 'goals' | 'notes' | 'ideas' | 'files' | 'relations' | 'activity' | 'map'
+export type ProjectSurfaceTab = 'overview' | 'workspace' | 'tasks' | 'materials' | 'progress' | 'settings'
+export type ProjectTab = ProjectSurfaceTab | ProjectLegacyTab
 
 type ProjectTabsProps = {
-  activeTab: ProjectTab
-  onChange: (tab: ProjectTab) => void
+  activeTab: ProjectSurfaceTab
+  onChange: (tab: ProjectSurfaceTab) => void
   compact?: boolean
   className?: string
   counts?: {
     tasks?: number
-    goals?: number
-    notes?: number
-    ideas?: number
-    files?: number
-    relations?: number
     blocks?: number
-    activity?: number
+    materials?: number
+    progress?: number
   }
 }
 
-const TABS: Array<{ key: ProjectTab; label: string; countKey?: keyof NonNullable<ProjectTabsProps['counts']> }> = [
+const TABS: Array<{ key: ProjectSurfaceTab; label: string; mobileLabel?: string; countKey?: keyof NonNullable<ProjectTabsProps['counts']> }> = [
   { key: 'overview', label: 'Обзор' },
-  { key: 'workspace', label: 'Рабочая область', countKey: 'blocks' },
-  { key: 'goals', label: 'Цели', countKey: 'goals' },
+  { key: 'workspace', label: 'Рабочая область', mobileLabel: 'Работа', countKey: 'blocks' },
   { key: 'tasks', label: 'Задачи', countKey: 'tasks' },
-  { key: 'notes', label: 'Заметки', countKey: 'notes' },
-  { key: 'ideas', label: 'Идеи', countKey: 'ideas' },
-  { key: 'files', label: 'Файлы', countKey: 'files' },
-  { key: 'relations', label: 'Связи', countKey: 'relations' },
-  { key: 'activity', label: 'Активность', countKey: 'activity' },
+  { key: 'materials', label: 'Материалы', countKey: 'materials' },
+  { key: 'progress', label: 'Прогресс', countKey: 'progress' },
   { key: 'settings', label: 'Настройки' },
 ]
 
@@ -49,7 +43,8 @@ export function ProjectTabs({ activeTab, onChange, counts, compact = false, clas
                 : 'border-(--border) bg-(--panel) text-(--text-secondary) hover:border-(--accent-border) hover:text-(--text-primary)',
             ].join(' ')}
           >
-            <span>{tab.label}</span>
+            <span className="md:hidden">{tab.mobileLabel ?? tab.label}</span>
+            <span className="hidden md:inline">{tab.label}</span>
             {tab.countKey && typeof counts?.[tab.countKey] === 'number' ? (
               <span className="ml-2 rounded-full border border-current/20 px-2 py-0.5 text-[11px] leading-none">
                 {counts[tab.countKey]}

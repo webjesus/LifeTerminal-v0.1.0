@@ -2,7 +2,7 @@ export type AppTheme = 'light' | 'dark' | 'system'
 export type AccentColor = 'violet' | 'blue' | 'purple' | 'indigo'
 export type RoundedStyle = 'soft' | 'medium' | 'large'
 export type DefaultTaskStatus = 'new' | 'in_progress'
-export type DefaultProjectView = 'overview' | 'workspace' | 'tasks' | 'notes' | 'ideas' | 'files' | 'map'
+export type DefaultProjectView = 'overview' | 'workspace' | 'tasks' | 'materials' | 'progress' | 'notes' | 'ideas' | 'files' | 'goals' | 'activity' | 'relations' | 'map'
 export type WeekStartsOn = 'monday' | 'sunday'
 export type DateFormatPreference = 'dd.mm.yyyy' | 'yyyy-mm-dd'
 export type ReminderLeadTime = 5 | 10 | 15 | 30 | 60
@@ -47,6 +47,7 @@ export type AppSettings = {
     defaultProjectView: DefaultProjectView
     askBeforeDelete: boolean
     autoSave: boolean
+    pinnedNextTaskId: string | null
   }
   calendar: {
     weekStartsOn: WeekStartsOn

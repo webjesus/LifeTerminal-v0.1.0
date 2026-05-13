@@ -1,41 +1,19 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { SectionIcon } from '../components/navigation/SectionIcon'
 import { QuickAddInput } from '../components/quick/QuickAddInput'
-import { taskPriorityLabels, taskStatusLabels } from '../components/tasks/taskMeta'
+import { taskStatusLabels } from '../components/tasks/taskMeta'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
-import type { DashboardLayoutMode } from '../types/settings'
-import type { Goal, Idea, Note, Project, Task } from '../types'
+import type { Idea, Note, Project, Task } from '../types'
 import { formatDateShort, formatDateTimeShort, toDateKey, toStartOfDay } from '../utils/date'
 import { storageKeys } from '../utils/storage'
-
-function isTaskOverdue(task: Task, todayStart: Date) {
-  return Boolean(task.deadline && task.status !== 'completed' && new Date(task.deadline) < todayStart)
-}
-
-type DeadlineItem = {
-  id: string
-  title: string
-  deadline: string
-  route: string
-  sourceType: 'task' | 'project'
-  overdue: boolean
-}
+import { getNextTask, getNextTaskCandidates, isTaskOverdue, NEXT_TASK_HELP_TEXT, NEXT_TASK_TOOLTIP } from '../utils/tasks'
 
 const EMPTY_TASKS: Task[] = []
 const EMPTY_PROJECTS: Project[] = []
 const EMPTY_NOTES: Note[] = []
 const EMPTY_IDEAS: Idea[] = []
-const EMPTY_GOALS: Goal[] = []
-
-type DashboardCard = {
-  key: string
-  defaultOrder: number
-  focusOrder: number
-  minimalOrder: number
-  element: ReactNode
-}
 
 type RecentActivityItem = {
   id: string
@@ -46,592 +24,347 @@ type RecentActivityItem = {
   section: 'tasks' | 'notes' | 'ideas'
 }
 
-function orderDashboardCards(cards: DashboardCard[], layout: DashboardLayoutMode) {
-  const ordered = [...cards].sort((first, second) => {
-    if (layout === 'focus') {
-      return first.focusOrder - second.focusOrder
-    }
+function formatTodayLabel(value: Date) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(value)
+}
 
-    if (layout === 'minimal') {
-      return first.minimalOrder - second.minimalOrder
-    }
+function formatStreakLabel(days: number) {
+  if (days === 1) {
+    return '1 день'
+  }
 
-    return first.defaultOrder - second.defaultOrder
-  })
+  if (days >= 2 && days <= 4) {
+    return `${days} дня`
+  }
 
-  return layout === 'minimal' ? ordered.slice(0, 4) : ordered
+  return `${days} дней`
+}
+
+function calculateStreak(dateKeys: string[], todayKey: string) {
+  if (dateKeys.length === 0) {
+    return 0
+  }
+
+  const keySet = new Set(dateKeys)
+  let streak = 0
+  let cursor = new Date(`${todayKey}T12:00:00`)
+
+  while (keySet.has(toDateKey(cursor))) {
+    streak += 1
+    cursor = new Date(cursor)
+    cursor.setDate(cursor.getDate() - 1)
+  }
+
+  return streak
 }
 
 export function DashboardPage() {
   const { settings } = useAppSettings()
-  const { value: storedTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
+  const { value: storedTasks, setValue: setTasks } = useLocalStorage<Task[]>(storageKeys.tasks, [])
   const { value: storedProjects } = useLocalStorage<Project[]>(storageKeys.projects, [])
   const { value: storedNotes } = useLocalStorage<Note[]>(storageKeys.notes, [])
   const { value: storedIdeas } = useLocalStorage<Idea[]>(storageKeys.ideas, [])
-  const { value: storedGoals } = useLocalStorage<Goal[]>(storageKeys.goals, [])
 
   const tasks = Array.isArray(storedTasks) ? storedTasks : EMPTY_TASKS
   const projects = Array.isArray(storedProjects) ? storedProjects : EMPTY_PROJECTS
   const notes = Array.isArray(storedNotes) ? storedNotes : EMPTY_NOTES
   const ideas = Array.isArray(storedIdeas) ? storedIdeas : EMPTY_IDEAS
-  const goals = Array.isArray(storedGoals) ? storedGoals : EMPTY_GOALS
 
-  const todayKey = toDateKey(new Date())
-  const todayStart = toStartOfDay(new Date())
+  const today = new Date()
+  const todayKey = toDateKey(today)
+  const todayStart = toStartOfDay(today)
+  const profileName = settings.profile.name || 'TANGO'
+  const projectTitleById = useMemo(() => new Map(projects.map((project) => [project.id, project.title])), [projects])
 
-  const todaysTasks = useMemo(
-    () =>
-      tasks
-        .filter((task) => task.deadline && toDateKey(new Date(task.deadline)) === todayKey)
-        .sort((a, b) => {
-          if (a.status === 'completed' && b.status !== 'completed') {
-            return 1
-          }
-          if (a.status !== 'completed' && b.status === 'completed') {
-            return -1
-          }
+  const openTasks = useMemo(() => tasks.filter((task) => task.status !== 'completed'), [tasks])
 
-          return new Date(a.deadline ?? 0).getTime() - new Date(b.deadline ?? 0).getTime()
-        })
-        .slice(0, 6),
+  const todayTasks = useMemo(
+    () => openTasks.filter((task) => task.deadline && toDateKey(new Date(task.deadline)) === todayKey).sort((a, b) => new Date(a.deadline ?? 0).getTime() - new Date(b.deadline ?? 0).getTime()),
+    [openTasks, todayKey],
+  )
+
+  const overdueTasks = useMemo(
+    () => openTasks.filter((task) => isTaskOverdue(task, todayStart)).sort((a, b) => new Date(a.deadline ?? 0).getTime() - new Date(b.deadline ?? 0).getTime()),
+    [openTasks, todayStart],
+  )
+
+  const nearestTaskSelection = useMemo(() => getNextTask(tasks, null, today), [tasks, today])
+  const nearestTask = nearestTaskSelection.task
+
+  const nearestTasks = useMemo(() => getNextTaskCandidates(tasks, null, today).slice(0, 5), [tasks, today])
+
+  const completedToday = useMemo(
+    () => tasks.filter((task) => task.status === 'completed' && toDateKey(new Date(task.completedAt ?? task.updatedAt)) === todayKey).length,
     [tasks, todayKey],
   )
 
-  const { overdueDeadlines, upcomingDeadlines } = useMemo(() => {
-    const taskItems: DeadlineItem[] = tasks
-      .filter((task) => task.deadline)
-      .map((task) => ({
-        id: task.id,
-        title: task.title,
-        deadline: task.deadline as string,
-        route: '/tasks',
-        sourceType: 'task',
-        overdue: isTaskOverdue(task, todayStart),
-      }))
+  const ideasToday = useMemo(() => ideas.filter((idea) => toDateKey(new Date(idea.createdAt)) === todayKey).length, [ideas, todayKey])
 
-    const projectItems: DeadlineItem[] = projects
-      .filter((project) => project.deadline && project.status !== 'completed' && project.status !== 'archived')
-      .map((project) => {
-        const deadline = project.deadline as string
+  const streakDays = useMemo(() => {
+    const activityKeys = [
+      ...tasks.map((task) => toDateKey(new Date(task.completedAt ?? task.updatedAt))),
+      ...notes.map((note) => toDateKey(new Date(note.updatedAt))),
+      ...ideas.map((idea) => toDateKey(new Date(idea.updatedAt))),
+    ]
 
-        return {
-          id: project.id,
-          title: project.title,
-          deadline,
-          route: `/projects/${project.id}`,
-          sourceType: 'project' as const,
-          overdue: new Date(deadline) < todayStart,
-        }
-      })
-
-    const merged = [...taskItems, ...projectItems].sort(
-      (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime(),
-    )
-
-    return {
-      overdueDeadlines: merged.filter((item) => item.overdue).slice(0, 6),
-      upcomingDeadlines: merged.filter((item) => !item.overdue).slice(0, 6),
-    }
-  }, [projects, tasks, todayStart])
+    return calculateStreak(activityKeys, todayKey)
+  }, [ideas, notes, tasks, todayKey])
 
   const activeProjects = useMemo(() => {
     return projects
-      .filter((project) => project.status === 'active')
+      .filter((project) => project.status === 'active' || project.status === 'planning')
       .map((project) => {
-        const linkedTasks = tasks.filter(
-          (task) => task.projectId === project.id || project.taskIds.includes(task.id),
-        )
+        const linkedTasks = tasks.filter((task) => task.projectId === project.id || project.taskIds.includes(task.id))
+        const openProjectTasks = linkedTasks.filter((task) => task.status !== 'completed')
         const totalTasks = linkedTasks.length
         const completedTasks = linkedTasks.filter((task) => task.status === 'completed').length
         const progressPercent = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100)
+        const nextAction = openProjectTasks.filter((task) => task.deadline).sort((a, b) => new Date(a.deadline ?? 0).getTime() - new Date(b.deadline ?? 0).getTime())[0] ?? openProjectTasks[0] ?? null
 
         return {
           project,
           totalTasks,
           completedTasks,
           progressPercent,
+          nextAction,
         }
       })
       .sort((a, b) => new Date(b.project.updatedAt).getTime() - new Date(a.project.updatedAt).getTime())
-      .slice(0, 6)
+      .slice(0, 3)
   }, [projects, tasks])
-
-  const latestNotes = useMemo(
-    () => [...notes].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 6),
-    [notes],
-  )
-
-  const latestIdeas = useMemo(
-    () => [...ideas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 6),
-    [ideas],
-  )
 
   const recentActivity = useMemo<RecentActivityItem[]>(() => {
     return [
-      ...tasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        subtitle: 'Задача',
-        route: '/tasks',
-        updatedAt: task.updatedAt,
-        section: 'tasks' as const,
-      })),
-      ...notes.map((note) => ({
-        id: note.id,
-        title: note.title,
-        subtitle: 'Заметка',
-        route: '/notes',
-        updatedAt: note.updatedAt,
-        section: 'notes' as const,
-      })),
-      ...ideas.map((idea) => ({
-        id: idea.id,
-        title: idea.title,
-        subtitle: 'Идея',
-        route: '/ideas',
-        updatedAt: idea.updatedAt,
-        section: 'ideas' as const,
-      })),
+      ...tasks.map((task) => ({ id: task.id, title: task.title, subtitle: 'Задача', route: '/tasks', updatedAt: task.updatedAt, section: 'tasks' as const })),
+      ...notes.map((note) => ({ id: note.id, title: note.title, subtitle: 'Заметка', route: '/notes', updatedAt: note.updatedAt, section: 'notes' as const })),
+      ...ideas.map((idea) => ({ id: idea.id, title: idea.title, subtitle: 'Идея', route: '/ideas', updatedAt: idea.updatedAt, section: 'ideas' as const })),
     ]
       .sort((first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime())
-      .slice(0, 5)
+      .slice(0, 3)
   }, [ideas, notes, tasks])
 
-  const visibleCards = useMemo(() => {
-    const cards: DashboardCard[] = []
-    const visibleModules = settings.display.visibleModules
+  function handleCompleteTask(taskId: string) {
+    const timestamp = new Date().toISOString()
 
-    if (visibleModules.tasks && settings.display.showTodayFocus) {
-      cards.push({
-        key: 'tasks',
-        defaultOrder: 1,
-        focusOrder: 1,
-        minimalOrder: 1,
-        element: (
-          <article key="tasks" className="ui-panel ui-card-hover p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="tasks" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Задачи</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Фокус на сегодня</h3>
-              </div>
-              <Link to="/tasks" className="ui-button px-3 py-2 text-xs">Открыть</Link>
-            </div>
-            {todaysTasks.length === 0 ? (
-              <p className="mt-4 text-sm text-(--text-muted)">На сегодня задач не найдено. Добавьте новую задачу через быстрое добавление.</p>
-            ) : (
-              <ul className="mt-4 space-y-2">
-                {todaysTasks.map((task) => (
-                  <li key={task.id}>
-                    <Link to="/tasks" className="block rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm text-(--text-secondary) transition-colors hover:border-(--accent)">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="truncate text-(--text-primary)">{task.title}</span>
-                        <span className="shrink-0 text-xs text-(--text-muted)">{formatDateShort(task.deadline as string)}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.12em] text-(--text-muted)">
-                        <span className="rounded-md border border-(--border) px-2 py-1">{taskStatusLabels[task.status]}</span>
-                        <span className="rounded-md border border-(--border) px-2 py-1">{taskPriorityLabels[task.priority]}</span>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.calendar) {
-      cards.push({
-        key: 'calendar',
-        defaultOrder: 2,
-        focusOrder: 5,
-        minimalOrder: 4,
-        element: (
-          <article key="calendar" className="ui-panel ui-card-hover p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="calendar" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Календарь</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Ближайшие дедлайны</h3>
-              </div>
-              <Link to="/deadlines" className="ui-button px-3 py-2 text-xs">Открыть</Link>
-            </div>
-            {upcomingDeadlines.length === 0 && overdueDeadlines.length === 0 ? (
-              <p className="mt-4 text-sm text-(--text-muted)">Дедлайнов пока нет. Задайте дату задаче или проекту.</p>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {overdueDeadlines.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-[11px] uppercase tracking-[0.16em] text-red-300">Просрочено</p>
-                    <ul className="space-y-2">
-                      {overdueDeadlines.map((item) => (
-                        <li key={`${item.sourceType}-${item.id}`}>
-                          <Link to={item.route} className="block rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm transition-colors hover:border-rose-300">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="truncate text-(--text-primary)">{item.title}</span>
-                              <span className="shrink-0 text-xs text-rose-500">{formatDateShort(item.deadline)}</span>
-                            </div>
-                            <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-rose-500">{item.sourceType === 'task' ? 'Задача' : 'Проект'}</p>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {upcomingDeadlines.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-[11px] uppercase tracking-[0.16em] text-(--text-muted)">Ближайшие</p>
-                    <ul className="space-y-2">
-                      {upcomingDeadlines.map((item) => (
-                        <li key={`${item.sourceType}-${item.id}`}>
-                          <Link to={item.route} className="block rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm transition-colors hover:border-(--accent)">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="truncate text-(--text-primary)">{item.title}</span>
-                              <span className="shrink-0 text-xs text-(--text-muted)">{formatDateShort(item.deadline)}</span>
-                            </div>
-                            <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-(--text-muted)">{item.sourceType === 'task' ? 'Задача' : 'Проект'}</p>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.projects) {
-      cards.push({
-        key: 'projects',
-        defaultOrder: 3,
-        focusOrder: 6,
-        minimalOrder: 2,
-        element: (
-          <article key="projects" className="ui-panel ui-card-hover p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="projects" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Проекты</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Активные проекты</h3>
-                <p className="mt-2 text-sm text-(--text-muted)">Короткий обзор активности и прогресса.</p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-end">
-              <Link to="/projects" className="ui-button px-3 py-2 text-xs">Все проекты</Link>
-            </div>
-            {activeProjects.length === 0 ? (
-              <p className="mt-4 text-sm text-(--text-muted)">Активных проектов пока нет. Создайте проект и начните собирать контекст.</p>
-            ) : (
-              <ul className="mt-4 space-y-2">
-                {activeProjects.map((item) => (
-                  <li key={item.project.id}>
-                    <Link to={`/projects/${item.project.id}`} className="block rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm text-(--text-secondary) transition-colors hover:border-(--accent)">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-(--text-primary)">{item.project.title}</p>
-                        {settings.display.showProjectProgress ? <span className="text-xs text-(--text-muted)">{item.progressPercent}%</span> : null}
-                      </div>
-                      {settings.display.showProjectProgress ? (
-                        <>
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
-                            <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${item.progressPercent}%` }} />
-                          </div>
-                          <p className="mt-2 text-xs text-(--text-muted)">Выполнено задач: {item.completedTasks} / {item.totalTasks}</p>
-                        </>
-                      ) : (
-                        <p className="mt-2 text-xs text-(--text-muted)">Связанных задач: {item.totalTasks}</p>
-                      )}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.notes) {
-      cards.push({
-        key: 'notes',
-        defaultOrder: 4,
-        focusOrder: 7,
-        minimalOrder: 3,
-        element: (
-          <article key="notes" className="ui-panel ui-card-hover p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="notes" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Заметки</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Последние заметки</h3>
-              </div>
-              <Link to="/notes" className="ui-button px-3 py-2 text-xs">Все заметки</Link>
-            </div>
-            {latestNotes.length === 0 ? (
-              <p className="mt-4 text-sm text-(--text-muted)">Заметок пока нет. Добавьте заметку через быстрый ввод.</p>
-            ) : (
-              <ul className="mt-4 grid gap-2 md:grid-cols-2">
-                {latestNotes.map((note) => (
-                  <li key={note.id}>
-                    <Link to="/notes" className="block rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm transition-colors hover:border-(--accent)">
-                      <p className="truncate text-(--text-primary)">{note.title}</p>
-                      <p className="mt-1 text-[11px] text-(--text-muted)">{formatDateTimeShort(note.updatedAt)}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-(--text-muted)">{note.content || 'Пустая заметка'}</p>
-                      {note.tags.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {note.tags.slice(0, 4).map((tag) => (
-                            <span key={tag} className="rounded-md border border-(--border) bg-(--panel) px-2 py-1 text-[10px] text-(--text-muted)">#{tag}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.ideas) {
-      cards.push({
-        key: 'ideas',
-        defaultOrder: 5,
-        focusOrder: 9,
-        minimalOrder: 8,
-        element: (
-          <article key="ideas" className="ui-panel ui-card-hover p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="ideas" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Идеи</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Последние идеи</h3>
-              </div>
-              <Link to="/ideas" className="ui-button px-3 py-2 text-xs">Все идеи</Link>
-            </div>
-            {latestIdeas.length === 0 ? (
-              <p className="mt-4 text-sm text-(--text-muted)">Идей пока нет. Добавьте идею через быстрый ввод.</p>
-            ) : (
-              <ul className="mt-4 space-y-2">
-                {latestIdeas.map((idea) => (
-                  <li key={idea.id}>
-                    <Link to="/ideas" className="block rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3 text-sm transition-colors hover:border-(--accent)">
-                      <p className="truncate text-(--text-primary)">{idea.title}</p>
-                      <p className="mt-1 text-[11px] text-(--text-muted)">{formatDateTimeShort(idea.updatedAt)}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-(--text-muted)">{idea.description || 'Без описания'}</p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.goals) {
-      cards.push({
-        key: 'goals',
-        defaultOrder: 6,
-        focusOrder: 3,
-        minimalOrder: 5,
-        element: (
-          <article key="goals" className="ui-panel ui-card-hover min-w-0 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="goals" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">Цели</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Цели и направления</h3>
-                <p className="mt-2 text-sm text-(--text-muted)">Всего целей: {goals.length}. Управление целями доступно через проекты и связанные рабочие области.</p>
-              </div>
-              <Link to="/projects" className="ui-button px-3 py-2 text-xs">Открыть</Link>
-            </div>
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.knowledgeLibrary) {
-      cards.push({
-        key: 'knowledgeLibrary',
-        defaultOrder: 7,
-        focusOrder: 8,
-        minimalOrder: 7,
-        element: (
-          <article key="knowledgeLibrary" className="ui-panel ui-card-hover min-w-0 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-(--text-muted)">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                    <SectionIcon section="knowledge" size={18} />
-                  </span>
-                  <p className="text-xs uppercase tracking-[0.22em]">База знаний</p>
-                </div>
-                <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">База знаний</h3>
-                <p className="mt-2 text-sm text-(--text-muted)">Соберите заметки, файлы и референсы в одном месте. Сейчас доступно {notes.length} заметок и {projects.length} активных контекстов.</p>
-              </div>
-              <Link to="/files" className="ui-button px-3 py-2 text-xs">Файлы</Link>
-            </div>
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.habits) {
-      cards.push({
-        key: 'habits',
-        defaultOrder: 8,
-        focusOrder: 2,
-        minimalOrder: 6,
-        element: (
-          <article key="habits" className="ui-panel ui-card-hover min-w-0 p-5">
-            <div className="flex items-center gap-2 text-(--text-muted)">
-              <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                <SectionIcon section="habits" size={18} />
-              </span>
-              <p className="text-xs uppercase tracking-[0.22em]">Привычки</p>
-            </div>
-            <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Привычки</h3>
-            <p className="mt-3 text-sm text-(--text-muted)">Этот модуль подготовлен для следующего этапа. Его можно держать в фокусе dashboard уже сейчас.</p>
-          </article>
-        ),
-      })
-    }
-
-    if (visibleModules.assistant) {
-      cards.push({
-        key: 'assistant',
-        defaultOrder: 9,
-        focusOrder: 4,
-        minimalOrder: 9,
-        element: (
-          <article key="assistant" className="ui-panel ui-card-hover min-w-0 p-5">
-            <div className="flex items-center gap-2 text-(--text-muted)">
-              <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
-                <SectionIcon section="assistant" size={18} />
-              </span>
-              <p className="text-xs uppercase tracking-[0.22em]">Ассистент</p>
-            </div>
-            <h3 className="mt-2 text-lg font-semibold text-(--text-primary)">Ассистент</h3>
-            <p className="mt-3 text-sm text-(--text-muted)">Модуль ассистента ещё не подключён, но layout и настройки уже готовы для его появления в интерфейсе.</p>
-          </article>
-        ),
-      })
-    }
-
-    return orderDashboardCards(cards, settings.layout.dashboardLayout)
-  }, [
-    activeProjects,
-    goals.length,
-    latestIdeas,
-    latestNotes,
-    notes.length,
-    overdueDeadlines,
-    projects.length,
-    settings.display.showProjectProgress,
-    settings.display.showTodayFocus,
-    settings.display.visibleModules,
-    settings.layout.dashboardLayout,
-    todaysTasks,
-    upcomingDeadlines,
-  ])
-
-  const shouldShowStatCards = settings.layout.dashboardLayout !== 'minimal' && settings.display.showTodayFocus
+    setTasks((current) => current.map((task) => (
+      task.id === taskId
+        ? { ...task, status: 'completed', completedAt: timestamp, updatedAt: timestamp }
+        : task
+    )))
+  }
 
   return (
-    <section className="w-full max-w-full space-y-4 md:space-y-6">
-      <header className="ui-panel overflow-hidden px-5 py-5 md:px-6 md:py-6">
+    <section className="w-full max-w-full space-y-3 md:space-y-4">
+      <header className="ui-panel px-4 py-3 md:px-5 md:py-3">
         <div className="min-w-0">
-          <p className="text-sm text-(--text-muted)">Добрый день, {settings.profile.name}</p>
-          <h1 className="mt-2 max-w-[15ch] text-[1.95rem] font-semibold leading-[1.05] text-(--text-primary) sm:max-w-none sm:text-[2.1rem] md:text-[2.35rem]">Ваше личное пространство продуктивности</h1>
-          <p className="page-description mt-3 max-w-2xl text-sm leading-6 text-(--text-muted)">Фокус на задачах, заметках, идеях и проектах.</p>
+          <div className="min-w-0">
+            <p className="text-sm text-(--text-muted)">Добрый день, {profileName}</p>
+            <h1 className="mt-0.5 text-xl font-semibold text-(--text-primary) md:text-[1.6rem]">Сегодня</h1>
+            <p className="mt-0.5 text-sm text-(--text-secondary)">{formatTodayLabel(today)} · Сфокусируйтесь на ближайших действиях.</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)] xl:items-start">
+        <div className="space-y-3">
+          {settings.display.showTodayFocus ? (
+            <section className="ui-panel border-(--accent-border) bg-[color-mix(in_srgb,var(--accent-soft)_30%,var(--panel))] p-3.5 md:p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-(--text-muted)">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-2xl bg-(--accent-soft) text-(--accent)">
+                      <SectionIcon section="tasks" size={14} />
+                    </span>
+                    <p className="text-xs uppercase tracking-[0.12em]">Сегодня в фокусе</p>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-(--text-secondary)">
+                    <span className="ui-chip">Сегодня {todayTasks.length}</span>
+                    <span className="ui-chip">Просрочено {overdueTasks.length}</span>
+                    <span className="ui-chip">Выполнено {completedToday}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a href="#dashboard-quick-add" className="ui-button-accent px-3.5 py-2 text-sm">Добавить задачу</a>
+                  <Link to="/tasks" className="ui-button px-3.5 py-2 text-sm">Открыть задачи</Link>
+                </div>
+              </div>
+
+              {todayTasks.length === 0 && overdueTasks.length === 0 && !nearestTask ? (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3.5 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-(--text-primary)">На сегодня задач нет</p>
+                    <p className="mt-0.5 text-sm text-(--text-secondary)">Добавьте задачу или выберите активный проект.</p>
+                  </div>
+                  <a href="#dashboard-quick-add" className="ui-button-accent shrink-0 px-3 py-2 text-sm">Добавить</a>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2.5">
+                  <div className="rounded-2xl border border-(--accent-border) bg-[color-mix(in_srgb,var(--accent-soft)_44%,var(--panel-elevated))] px-3.5 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-(--accent)">Главный фокус</span>
+                          <p className="text-[11px] uppercase tracking-[0.12em] text-(--text-muted)">Ближайшее действие</p>
+                        </div>
+                        <p className="mt-2 truncate text-base font-semibold text-(--text-primary)">{nearestTask?.title || 'Нет активных задач'}</p>
+                        <p className="mt-1 text-xs text-(--text-secondary)">{nearestTask?.deadline ? `Срок: ${formatDateShort(nearestTask.deadline)}` : 'Можно быстро добавить новую задачу.'}</p>
+                        {nearestTask ? <p title={NEXT_TASK_TOOLTIP} className="mt-2 text-xs text-(--text-muted)">{NEXT_TASK_HELP_TEXT}</p> : null}
+                      </div>
+                      {nearestTask ? <button type="button" onClick={() => handleCompleteTask(nearestTask.id)} className="ui-button-accent px-3 py-2 text-sm">Выполнить</button> : null}
+                    </div>
+                  </div>
+
+                  {nearestTasks.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {nearestTasks.slice(0, 3).map((task) => (
+                        <Link key={`focus-${task.id}`} to="/tasks" className="rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-3 py-2.5 transition-colors hover:border-(--accent-border)">
+                          <p className="truncate text-sm font-medium text-(--text-primary)">{task.title}</p>
+                          <p className="mt-1 text-xs text-(--text-muted)">{task.deadline ? formatDateShort(task.deadline) : 'Без срока'} · {taskStatusLabels[task.status]}</p>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {settings.display.showDashboardQuickAdd ? (
+            <section id="dashboard-quick-add" className="ui-panel p-3.5 md:p-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-(--text-muted)">Быстрое добавление</p>
+              <div className="mt-2">
+                <QuickAddInput compact todayMode />
+              </div>
+            </section>
+          ) : null}
+
+          <section className="ui-panel p-3.5 md:p-4">
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-(--text-muted)">Ближайшие задачи</p>
+                <h2 className="mt-1 text-base font-semibold text-(--text-primary)">Что делать дальше</h2>
+              </div>
+              <Link to="/tasks" className="ui-button px-3 py-2 text-sm">Все задачи</Link>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {nearestTasks.length > 0 ? nearestTasks.map((task) => (
+                <div key={task.id} className="flex items-center gap-3 rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-3 py-2.5">
+                  <button type="button" aria-label={`Завершить ${task.title}`} onClick={() => handleCompleteTask(task.id)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)">
+                    <span className="text-[10px]">✓</span>
+                  </button>
+                  <Link to="/tasks" className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-(--text-primary)">{task.title}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-(--text-muted)">
+                      <span>{task.deadline ? formatDateShort(task.deadline) : 'Без срока'}</span>
+                      <span>{taskStatusLabels[task.status]}</span>
+                      {task.projectId && projectTitleById.get(task.projectId) ? <span className="ui-chip">{projectTitleById.get(task.projectId)}</span> : null}
+                    </div>
+                  </Link>
+                </div>
+              )) : <p className="rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3.5 py-3 text-sm text-(--text-muted)">Ближайших задач нет.</p>}
+            </div>
+          </section>
         </div>
 
-        {settings.display.showDashboardQuickAdd ? (
-          <div className="mt-5 rounded-[26px] border border-(--border) bg-(--panel-elevated) p-4 sm:p-5">
-            <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Быстрое добавление</p>
-            <div className="mt-3">
-              <QuickAddInput compact />
-            </div>
-          </div>
-        ) : null}
-
-        {settings.display.showRecentActivity ? (
-          <div className="mt-4 rounded-[26px] border border-(--border) bg-(--panel-elevated) p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.22em] text-(--text-muted)">Последняя активность</p>
-                <p className="mt-1 text-sm text-(--text-muted)">Недавние изменения в задачах, заметках и идеях.</p>
+        <aside className="space-y-2.5">
+          <section className="ui-panel p-3 md:p-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-(--text-muted)">Прогресс дня</p>
+                <h2 className="mt-1 text-sm font-semibold text-(--text-primary)">Снимок дня</h2>
               </div>
             </div>
-            {recentActivity.length === 0 ? (
-              <p className="mt-3 text-sm text-(--text-muted)">Активность появится после первых изменений в приложении.</p>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-(--text-secondary)">
+              <span className="ui-chip">Выполнено {completedToday}</span>
+              <span className="ui-chip">Активных {openTasks.length}</span>
+              <span className="ui-chip">Идей {ideasToday}</span>
+              <span className="ui-chip">Серия {formatStreakLabel(streakDays)}</span>
+            </div>
+
+            <p className="mt-2 text-xs text-(--text-muted)">Сегодня в фокусе {todayTasks.length} задач, из них {overdueTasks.length} требуют внимания.</p>
+          </section>
+
+          <section className="ui-panel p-3.5 md:p-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-(--text-muted)">Активные проекты</p>
+                <h2 className="mt-1 text-base font-semibold text-(--text-primary)">Что двигается сейчас</h2>
+              </div>
+              <Link to="/projects" className="ui-button px-3 py-2 text-sm">Все</Link>
+            </div>
+
+            {activeProjects.length === 0 ? (
+              <div className="mt-3 rounded-2xl border border-dashed border-(--border) bg-(--panel-elevated) px-3.5 py-3">
+                <p className="text-sm font-semibold text-(--text-primary)">Проектов пока нет</p>
+                <p className="mt-1 text-sm text-(--text-secondary)">Создайте первый проект, чтобы собрать задачи, идеи и материалы.</p>
+              </div>
             ) : (
-              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {recentActivity.map((item) => (
-                  <Link key={`${item.section}-${item.id}`} to={item.route} className="min-w-0 rounded-2xl border border-(--border) bg-(--panel) px-4 py-3 text-sm transition-colors hover:border-(--accent)">
-                    <div className="flex min-w-0 items-center gap-2 text-(--text-muted)">
-                      <SectionIcon section={item.section} size={16} />
-                      <span className="text-xs uppercase tracking-[0.14em]">{item.subtitle}</span>
+              <div className="mt-3 space-y-2.5">
+                {activeProjects.map((item) => (
+                  <article key={item.project.id} className="rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-3.5 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-(--text-primary)">{item.project.title}</p>
+                        <p className="mt-1 line-clamp-1 text-xs text-(--text-muted)">{item.nextAction ? `Ближайшее действие: ${item.nextAction.title}` : 'Ближайшее действие пока не задано'}</p>
+                      </div>
+                      {settings.display.showProjectProgress ? <span className="text-xs text-(--text-muted)">{item.progressPercent}%</span> : null}
                     </div>
-                    <p className="mt-2 truncate text-(--text-primary)">{item.title}</p>
-                    <p className="mt-1 text-xs text-(--text-muted)">{formatDateTimeShort(item.updatedAt)}</p>
-                  </Link>
+
+                    {settings.display.showProjectProgress ? (
+                      <div className="mt-2.5">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-(--panel)">
+                          <div className="h-full rounded-full bg-[color-mix(in_srgb,var(--accent)_72%,var(--border))] transition-all duration-300" style={{ width: `${item.progressPercent}%` }} />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-2.5 flex items-center justify-between gap-3 text-xs text-(--text-muted)">
+                      <span>{item.completedTasks}/{item.totalTasks} задач</span>
+                      <Link to={`/projects/${item.project.id}`} className="ui-button px-3 py-1.5 text-sm">Открыть</Link>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
-          </div>
-        ) : null}
+          </section>
 
-        {shouldShowStatCards ? (
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="ui-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Сегодня</p>
-              <p className="mt-2 text-xl font-semibold text-(--text-primary)">{todaysTasks.length} задач в фокусе</p>
-            </div>
-            <div className="ui-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Ближайшие</p>
-              <p className="mt-2 text-xl font-semibold text-(--text-primary)">{upcomingDeadlines.length} ближайших сроков</p>
-            </div>
-            <div className="ui-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Просроченные</p>
-              <p className="mt-2 text-xl font-semibold text-rose-600">{overdueDeadlines.length} просрочено</p>
-            </div>
-          </div>
-        ) : null}
-      </header>
+          {settings.display.showRecentActivity ? (
+            <section className="ui-panel p-3 md:p-3.5">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.12em] text-(--text-muted)">Недавние изменения</p>
+                  <h2 className="mt-1 text-sm font-semibold text-(--text-primary)">Последние события</h2>
+                </div>
+                <Link to="/tasks" className="ui-button px-3 py-2 text-sm">Показать больше</Link>
+              </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visibleCards.map((card) => card.element)}
+              {recentActivity.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {recentActivity.map((item) => (
+                    <Link key={`${item.section}-${item.id}`} to={item.route} className="block rounded-2xl border border-(--border-soft) bg-(--panel-elevated) px-3 py-2.5 transition-colors hover:border-(--border)">
+                      <div className="flex items-center justify-between gap-3 text-xs text-(--text-muted)">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <SectionIcon section={item.section} size={14} />
+                          <span className="uppercase tracking-[0.1em]">{item.subtitle}</span>
+                        </div>
+                        <span className="shrink-0">{formatDateTimeShort(item.updatedAt)}</span>
+                      </div>
+                      <p className="mt-1 truncate text-sm text-(--text-secondary)">{item.title}</p>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-(--text-muted)">Недавних изменений пока нет.</p>
+              )}
+            </section>
+          ) : null}
+        </aside>
       </div>
     </section>
   )

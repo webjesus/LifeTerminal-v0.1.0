@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/notes/EmptyState'
 import { NoteCard } from '../components/notes/NoteCard'
 import { NoteFormModal, type NoteFormValues } from '../components/notes/NoteFormModal'
@@ -170,49 +171,24 @@ export function NotesPage() {
   }
 
   const totalTags = useMemo(() => new Set(normalizedNotes.flatMap((note) => note.tags)).size, [normalizedNotes])
-  const notesWithLinks = useMemo(
-    () => normalizedNotes.filter((note) => note.taskIds.length > 0 || note.ideaIds.length > 0 || note.projectId).length,
-    [normalizedNotes],
-  )
-
   return (
-    <section className="space-y-6">
-      <header className="ui-panel p-5 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Knowledge Base</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Заметки</h1>
-            <p className="page-description mt-3 max-w-2xl text-sm text-(--text-muted) md:text-base">
-              Полноценное локальное пространство заметок с поиском, тегами и базовыми связями с задачами, проектами и идеями.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        section="notes"
+        title="Заметки"
+        description="Заметки как рабочий материал: название, краткий preview и быстрый переход внутрь."
+        actionLabel="Добавить заметку"
+        onAction={openCreateModal}
+      />
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="ui-button-accent px-4 py-3"
-          >
-            Добавить заметку
-          </button>
+      <section className="ui-panel p-4 md:p-4.5">
+        <div className="flex flex-wrap gap-2 text-sm text-(--text-secondary)">
+          <span className="ui-chip">Всего {normalizedNotes.length}</span>
+          <span className="ui-chip">Тегов {totalTags}</span>
         </div>
+      </section>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Всего заметок</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{normalizedNotes.length}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Уникальных тегов</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{totalTags}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Со связями</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{notesWithLinks}</p>
-          </div>
-        </div>
-      </header>
-
-      <section className="ui-panel p-5">
+      <section className="ui-panel p-4 md:p-5">
         <label className="block text-sm text-(--text-secondary)" htmlFor="notes-search">
           Поиск по названию, тексту и тегам
         </label>
@@ -221,7 +197,7 @@ export function NotesPage() {
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           className="ui-input mt-2"
-          placeholder="Например, research, ubuntu, план"
+          placeholder="Найти заметку"
         />
       </section>
 

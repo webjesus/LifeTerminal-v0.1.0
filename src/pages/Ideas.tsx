@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/ideas/EmptyState'
 import { IdeaCard } from '../components/ideas/IdeaCard'
 import { IdeaFormModal, type IdeaFormValues } from '../components/ideas/IdeaFormModal'
@@ -16,7 +17,7 @@ type ModalMode = 'create' | 'edit' | null
 type IdeaFilter = 'all' | 'new' | 'thinking' | 'promising' | 'planned' | 'in_progress' | 'implemented' | 'postponed' | 'archived'
 
 const filterLabels: Record<IdeaFilter, string> = {
-  all: 'All',
+  all: 'Все',
   new: 'Новые',
   thinking: 'Обдумываются',
   promising: 'Перспективные',
@@ -26,6 +27,8 @@ const filterLabels: Record<IdeaFilter, string> = {
   postponed: 'Отложенные',
   archived: 'Архив',
 }
+
+const VISIBLE_FILTERS: IdeaFilter[] = ['all', 'new', 'in_progress', 'implemented', 'archived']
 
 function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids))
@@ -389,49 +392,27 @@ export function IdeasPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <header className="rounded-2xl border border-(--border) bg-(--panel) p-5 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Concept Pipeline</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Идеи</h1>
-            <p className="page-description mt-2 max-w-3xl text-sm text-(--text-muted) md:text-base">
-              Системный backlog идей с привязкой к проектам, задачам и заметкам, а также быстрым превращением в рабочие артефакты.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        section="ideas"
+        title="Идеи"
+        description="Быстрый список мыслей и гипотез. Сложные связи и оценка остаются внутри detail view."
+        actionLabel="Добавить идею"
+        onAction={openCreateModal}
+      />
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="ui-button-accent px-5 py-3"
-          >
-            Добавить идею
-          </button>
+      <section className="ui-panel p-4 md:p-4.5">
+        <div className="flex flex-wrap gap-2 text-sm text-(--text-secondary)">
+          <span className="ui-chip">Всего {stats.total}</span>
+          <span className="ui-chip">В работе {stats.inProgress}</span>
+          <span className={stats.implemented > 0 ? 'ui-chip border-(--completed-border) bg-(--completed-bg) text-(--completed-text)' : 'ui-chip'}>Реализовано {stats.implemented}</span>
+          <span className="ui-chip">Со связями {stats.linked}</span>
         </div>
+      </section>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Всего</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.total}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">В работе</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.inProgress}</p>
-          </div>
-          <div className="ui-stat-card border-(--completed-border) bg-(--completed-bg)">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Реализовано</p>
-            <p className="mt-2 text-2xl font-semibold text-(--completed-text)">{stats.implemented}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.2em] text-(--text-muted)">Со связями</p>
-            <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{stats.linked}</p>
-          </div>
-        </div>
-      </header>
-
-      <section className="ui-panel p-5">
+      <section className="ui-panel p-4 md:p-5">
         <div className="ui-filter-scroll mb-4">
-          {(Object.keys(filterLabels) as IdeaFilter[]).map((filter) => (
+          {VISIBLE_FILTERS.map((filter) => (
             <button
               key={filter}
               type="button"

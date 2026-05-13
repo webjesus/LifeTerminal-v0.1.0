@@ -283,7 +283,7 @@ export function ProjectInspector({
           <div className="ui-surface-elevated rounded-2xl border p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Actions</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={onOpenAddElement ?? (() => onCreateBlock('text'))} className="ui-button-accent px-3 py-2 text-sm">Добавить элемент</button>
+              <button type="button" onClick={onOpenAddElement ?? (() => onCreateBlock('text'))} className="ui-button px-3 py-2 text-sm">Добавить элемент</button>
               <button type="button" onClick={onArrangeBlocks} className="ui-button px-3 py-2 text-sm">Упорядочить</button>
               <button type="button" onClick={onResetView} className="ui-button px-3 py-2 text-sm">Сбросить вид</button>
             </div>

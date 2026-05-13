@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { LinkedItemsPanel } from '../linked/LinkedItemsPanel'
+import { ActionMenu } from '../ui/ActionMenu'
 import type { ProjectSection } from '../../types'
 import type { RelationSelectableItem } from '../../utils/relations'
 
@@ -144,15 +145,13 @@ export function ProjectSectionList({
                 <p className="mt-1 text-sm text-(--text-muted)">{section.description || 'Описание раздела пока не добавлено.'}</p>
                 <p className="mt-3 text-xs text-(--text-muted)">Блоков: {blockCounts[section.id] ?? 0}</p>
               </div>
-              <details className="shrink-0">
-                <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-secondary)">
-                  ...
-                </summary>
-                <div className="mt-2 flex min-w-36 flex-col gap-2 rounded-2xl border border-(--border-soft) bg-(--panel) p-2">
-                  <button type="button" onClick={() => startEdit(section)} className="ui-button px-3 py-2 text-xs">Редактировать</button>
-                  <button type="button" onClick={() => onDeleteSection(section)} className="ui-button-danger px-3 py-2 text-xs">Удалить</button>
-                </div>
-              </details>
+              <ActionMenu
+                items={[
+                  { label: 'Редактировать', onSelect: () => startEdit(section) },
+                  { label: 'Удалить', onSelect: () => onDeleteSection(section), tone: 'danger' },
+                ]}
+                triggerClassName="rounded-full bg-(--panel)"
+              />
             </div>
 
             <div className="mt-4 flex gap-2">

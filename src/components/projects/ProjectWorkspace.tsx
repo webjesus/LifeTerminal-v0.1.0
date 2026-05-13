@@ -127,6 +127,7 @@ export function ProjectWorkspace({
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const resetSignalRef = useRef(resetViewSignal)
   const arrangeSignalRef = useRef(arrangeSignal)
+  const mobileAutoFitRef = useRef<string | null>(null)
   const canvasViewStorageKey = `${CANVAS_VIEW_STORAGE_KEY_PREFIX}${project.id}`
   const { value: storedCanvasView, setValue: setStoredCanvasView } = useLocalStorage<CanvasViewState>(canvasViewStorageKey, DEFAULT_CANVAS_VIEW_STATE)
 
@@ -424,10 +425,6 @@ export function ProjectWorkspace({
   }, [activeSectionFilter, resolvedBlocks])
 
   const canvasWorldHeight = useMemo(() => {
-    if (isMobile) {
-      return undefined
-    }
-
     const maxBottom = filteredBlocks.reduce((maxValue, block) => {
       const nextBottom = (block.y ?? 0) + (block.height ?? 160)
       return Math.max(maxValue, nextBottom)
@@ -437,10 +434,6 @@ export function ProjectWorkspace({
   }, [filteredBlocks, isMobile])
 
   const canvasWorldWidth = useMemo(() => {
-    if (isMobile) {
-      return undefined
-    }
-
     const maxRight = filteredBlocks.reduce((maxValue, block) => {
       const nextRight = (block.x ?? 0) + (block.width ?? DEFAULT_BLOCK_WIDTH)
       return Math.max(maxValue, nextRight)
@@ -853,13 +846,13 @@ export function ProjectWorkspace({
   function handleViewportPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     const isMiddleMousePan = event.button === 1
     const isLeftMousePan = event.button === 0 && (isSpacePressed || activeTool === 'pan' || isCanvasPanMode)
+    const isTouchPan = isMobile && event.pointerType !== 'mouse' && event.button === 0
 
     if (
-      isMobile
-      || draggingBlockId
+      draggingBlockId
       || resizingBlockId
       || shouldIgnoreViewportPanTarget(event.target)
-      || (!isMiddleMousePan && !isLeftMousePan)
+      || (!isMiddleMousePan && !isLeftMousePan && !isTouchPan)
     ) {
       return
     }
@@ -968,14 +961,31 @@ export function ProjectWorkspace({
     : activeTool === 'pan'
       ? 'Рука'
       : activeTool
+  const showMobileWorkspaceChrome = editorMode && isMobile
   const hasFilter = activeSectionFilter !== 'all'
   const filterEmpty = blocks.length > 0 && filteredBlocks.length === 0
   const zoomPercent = Math.round(canvasView.zoom * 100)
   const showDesktopCanvasEmptyHint = editorMode && !isMobile && (blocks.length === 0 || filterEmpty)
+  const showMobileCanvasEmptyHint = editorMode && isMobile && (blocks.length === 0 || filterEmpty)
   const showCanvasControls = Boolean(onToggleFullscreen)
 
+  useEffect(() => {
+    if (!showMobileWorkspaceChrome || !viewportSize.width || !viewportSize.height) {
+      return
+    }
+
+    const nextKey = `${project.id}:${activeSectionFilter}:${filteredBlocks.length}`
+
+    if (mobileAutoFitRef.current === nextKey) {
+      return
+    }
+
+    mobileAutoFitRef.current = nextKey
+    handleFitToContent()
+  }, [activeSectionFilter, filteredBlocks.length, project.id, showMobileWorkspaceChrome, viewportSize.height, viewportSize.width])
+
   return (
-    <section className={cn('min-w-0 space-y-3', editorMode && 'flex h-full min-h-0 flex-col')}>
+    <section className={cn('min-w-0 space-y-3', editorMode && 'flex h-full min-h-0 flex-col', showMobileWorkspaceChrome && 'min-h-[calc(100dvh-13.5rem)]')}>
       {!editorMode ? (
         <div className="ui-panel px-4 py-3 md:px-5 md:py-3.5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1011,7 +1021,28 @@ export function ProjectWorkspace({
         </div>
       ) : null}
 
-      {showCanvasControls && isMobile ? (
+      {showMobileWorkspaceChrome ? (
+        <div className="ui-panel px-3.5 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-(--text-primary)">Рабочая область</p>
+                <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-[11px] text-(--text-muted)">
+                  Блоков: {filteredBlocks.length}{hasFilter ? ` / ${blocks.length}` : ''}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-(--text-muted)">Canvas viewer для мобильного просмотра и быстрого редактирования.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={handleFitToContent} className="ui-button px-3 py-2 text-sm">Вид</button>
+              <button type="button" onClick={handleAddElement} className="ui-button-accent px-3 py-2 text-sm">Добавить</button>
+            </div>
+          </div>
+          {relationNotice ? <p className="mt-2 text-sm text-(--accent)">{relationNotice}</p> : null}
+        </div>
+      ) : null}
+
+      {showCanvasControls && isMobile && !editorMode ? (
         <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 md:bottom-8 md:right-8">
           <button
             type="button"
@@ -1080,25 +1111,8 @@ export function ProjectWorkspace({
         </div>
       ) : null}
 
-      <div className={cn('ui-panel min-w-0', editorMode ? 'flex flex-1 min-h-0 flex-col overflow-hidden p-0' : 'p-2.5 md:p-3')}>
-        {isMobile ? (
-          <div className="grid grid-cols-1 gap-4">
-            {filteredBlocks.map((block) => (
-              <WorkspaceCard
-                key={block.id}
-                block={block}
-                sectionTitle={block.sectionId ? (sectionTitleMap.get(block.sectionId) ?? 'Раздел') : null}
-                selected={block.id === selectedBlockId}
-                relationSummary={relationSummaryMap[block.id]}
-                mobileRelations={mobileRelationMap[block.id] ?? []}
-                mode="list"
-                onSelect={(blockId) => onSelectBlock?.(blockId)}
-                onEdit={onEditBlock}
-              />
-            ))}
-          </div>
-        ) : (
-          <div
+      <div className={cn('ui-panel min-w-0', editorMode ? 'flex flex-1 min-h-0 flex-col overflow-hidden p-0' : 'p-2.5 md:p-3', showMobileWorkspaceChrome && 'min-h-[calc(100dvh-18rem)]')}>
+        <div
             ref={viewportRef}
             className={cn(
               editorMode
@@ -1118,74 +1132,123 @@ export function ProjectWorkspace({
             onPointerCancel={handleViewportPointerEnd}
           >
             {showCanvasControls ? (
-              <div className="pointer-events-none absolute bottom-5 right-5 z-40 flex max-w-[calc(100%-2.5rem)] justify-end">
-                <div className="pointer-events-auto rounded-2xl ui-shadow-floating">
-                  <div className="ui-surface-floating isolate flex flex-wrap items-center justify-end gap-1 overflow-hidden rounded-2xl border p-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsCanvasPanMode((current) => !current)}
-                    aria-label={isCanvasPanMode ? 'Выключить локальный pan mode' : 'Включить локальный pan mode'}
-                    className={cn(
-                      'inline-flex h-11 w-11 items-center justify-center rounded-xl transition',
-                      (isCanvasPanMode || activeTool === 'pan')
-                        ? 'bg-(--accent-soft) text-(--accent)'
-                        : 'text-(--text-secondary) hover:bg-(--panel) hover:text-(--text-primary)',
-                    )}
-                  >
-                    <Hand size={18} strokeWidth={2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateCanvasZoom(canvasView.zoom / CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
-                    aria-label="Отдалить рабочую область"
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
-                  >
-                    <Minus size={18} strokeWidth={2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetView}
-                    aria-label="Сбросить вид рабочей области"
-                    className="min-w-16 rounded-xl px-3 py-2 text-sm font-semibold text-(--text-primary) transition hover:bg-(--panel)"
-                  >
-                    {zoomPercent}%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateCanvasZoom(canvasView.zoom * CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
-                    aria-label="Приблизить рабочую область"
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
-                  >
-                    <Plus size={18} strokeWidth={2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetView}
-                    aria-label="Сбросить масштаб и позицию рабочей области"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
-                  >
-                    <RotateCcw size={16} strokeWidth={2} />
-                    Сброс
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleFitToContent}
-                    aria-label="Показать все блоки рабочей области"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
-                  >
-                    Показать всё
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onToggleFullscreen}
-                    aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть рабочее пространство на весь экран'}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-(--accent-border) bg-(--panel) text-(--accent) transition hover:bg-(--panel)"
-                  >
-                    {isFullscreen ? <Minimize2 size={18} strokeWidth={2} /> : <Expand size={18} strokeWidth={2} />}
-                  </button>
+              isMobile ? (
+                <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] left-1/2 z-40 flex w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 justify-center">
+                  <div className="pointer-events-auto rounded-2xl ui-shadow-floating">
+                    <div className="ui-surface-floating isolate flex flex-wrap items-center justify-center gap-1 overflow-hidden rounded-2xl border p-1">
+                      <button
+                        type="button"
+                        onClick={() => updateCanvasZoom(canvasView.zoom / CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
+                        aria-label="Отдалить рабочую область"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        <Minus size={18} strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFitToContent}
+                        aria-label="Показать все блоки рабочей области"
+                        className="min-w-14 rounded-xl px-3 py-2 text-sm font-semibold text-(--text-primary) transition hover:bg-(--panel)"
+                      >
+                        {zoomPercent}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCanvasZoom(canvasView.zoom * CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
+                        aria-label="Приблизить рабочую область"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        <Plus size={18} strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetView}
+                        aria-label="Сбросить масштаб и позицию рабочей области"
+                        className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        Сброс
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFitToContent}
+                        aria-label="Показать все блоки рабочей области"
+                        className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        Показать всё
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="pointer-events-none absolute bottom-5 right-5 z-40 flex max-w-[calc(100%-2.5rem)] justify-end">
+                  <div className="pointer-events-auto rounded-2xl ui-shadow-floating">
+                    <div className="ui-surface-floating isolate flex flex-wrap items-center justify-end gap-1 overflow-hidden rounded-2xl border p-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsCanvasPanMode((current) => !current)}
+                        aria-label={isCanvasPanMode ? 'Выключить локальный pan mode' : 'Включить локальный pan mode'}
+                        className={cn(
+                          'inline-flex h-11 w-11 items-center justify-center rounded-xl transition',
+                          (isCanvasPanMode || activeTool === 'pan')
+                            ? 'bg-(--accent-soft) text-(--accent)'
+                            : 'text-(--text-secondary) hover:bg-(--panel) hover:text-(--text-primary)',
+                        )}
+                      >
+                        <Hand size={18} strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCanvasZoom(canvasView.zoom / CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
+                        aria-label="Отдалить рабочую область"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        <Minus size={18} strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetView}
+                        aria-label="Сбросить вид рабочей области"
+                        className="min-w-16 rounded-xl px-3 py-2 text-sm font-semibold text-(--text-primary) transition hover:bg-(--panel)"
+                      >
+                        {zoomPercent}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCanvasZoom(canvasView.zoom * CANVAS_ZOOM_FACTOR, getViewportCenterPointer())}
+                        aria-label="Приблизить рабочую область"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        <Plus size={18} strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetView}
+                        aria-label="Сбросить масштаб и позицию рабочей области"
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        <RotateCcw size={16} strokeWidth={2} />
+                        Сброс
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFitToContent}
+                        aria-label="Показать все блоки рабочей области"
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-(--text-secondary) transition hover:bg-(--panel) hover:text-(--text-primary)"
+                      >
+                        Показать всё
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onToggleFullscreen}
+                        aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть рабочее пространство на весь экран'}
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-(--accent-border) bg-(--panel) text-(--accent) transition hover:bg-(--panel)"
+                      >
+                        {isFullscreen ? <Minimize2 size={18} strokeWidth={2} /> : <Expand size={18} strokeWidth={2} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
             ) : null}
             {showDesktopCanvasEmptyHint ? (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
@@ -1205,14 +1268,28 @@ export function ProjectWorkspace({
                 </div>
               </div>
             ) : null}
+            {showMobileCanvasEmptyHint ? (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-5">
+                <div className="pointer-events-auto max-w-xs rounded-3xl border border-dashed border-(--border) bg-[color-mix(in_srgb,var(--panel)_92%,transparent)] px-5 py-5 text-center shadow-(--shadow-soft)">
+                  <h2 className="text-lg font-semibold text-(--text-primary)">{blocks.length === 0 ? 'Рабочая область пустая' : 'В этом фильтре пока нет блоков'}</h2>
+                  <p className="mt-2 text-sm text-(--text-secondary)">{blocks.length === 0 ? 'Добавьте первый блок, чтобы начать собирать проект.' : 'Смените фильтр раздела или покажите все блоки.'}</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    <button type="button" className="ui-button-accent px-4 py-2 text-sm" onClick={handleAddElement}>Добавить элемент</button>
+                    {filterEmpty ? <button type="button" className="ui-button px-4 py-2 text-sm" onClick={handleFitToContent}>Показать всё</button> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {import.meta.env.DEV ? (
               <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-2xl border border-(--border) bg-[color-mix(in_srgb,var(--panel)_92%,transparent)] px-3 py-2 text-xs text-(--text-secondary) shadow-(--shadow-soft)">
                 blocks: {filteredBlocks.length}/{blocks.length} · zoom: {zoomPercent}% · pan: {Math.round(canvasView.panX)} / {Math.round(canvasView.panY)} · viewport: {viewportSize.width}x{viewportSize.height} · world: {canvasWorldWidth ?? 0}x{canvasWorldHeight ?? 0} · filter: {activeSectionFilter}
               </div>
             ) : null}
-            <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-2xl border border-(--border) bg-[color-mix(in_srgb,var(--panel)_92%,transparent)] px-3 py-2 text-xs text-(--text-secondary) shadow-(--shadow-soft)">
-              Wheel: zoom · Space + drag: pan · Middle mouse: pan
-            </div>
+            {!isMobile ? (
+              <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-2xl border border-(--border) bg-[color-mix(in_srgb,var(--panel)_92%,transparent)] px-3 py-2 text-xs text-(--text-secondary) shadow-(--shadow-soft)">
+                Wheel: zoom · Space + drag: pan · Middle mouse: pan
+              </div>
+            ) : null}
             <div
               className="absolute left-0 top-0"
               style={{
@@ -1359,6 +1436,8 @@ export function ProjectWorkspace({
                   relationSummary={relationSummaryMap[block.id]}
                   mobileRelations={mobileRelationMap[block.id] ?? []}
                   mode="canvas"
+                  disableViewportPan={isMobile}
+                  showCanvasHandles={!isMobile}
                   onSelect={(blockId) => {
                     if (activeTool === 'pan' || isSpacePressed || Boolean(panState)) {
                       return
@@ -1377,7 +1456,6 @@ export function ProjectWorkspace({
               ))}
             </div>
           </div>
-        )}
       </div>
     </section>
   )

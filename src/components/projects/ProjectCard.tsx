@@ -1,7 +1,7 @@
-import { MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '../../types'
-import { projectPriorityLabels, projectStatusLabels } from './projectMeta'
+import { ActionMenu } from '../ui/ActionMenu'
+import { projectStatusLabels } from './projectMeta'
 
 type ProjectCardProps = {
   project: Project
@@ -28,34 +28,27 @@ function formatDeadline(value: string | null) {
   }).format(new Date(value))
 }
 
-export function ProjectCard({ project, counts, completionRate, onEdit, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, completionRate, onEdit, onDelete }: ProjectCardProps) {
   return (
-    <article className="ui-panel ui-card-hover group p-5">
+    <article className="ui-panel ui-card-hover group p-4 md:p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap gap-2 text-xs text-(--text-secondary)">
             <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">{projectStatusLabels[project.status]}</span>
-            <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">Приоритет: {projectPriorityLabels[project.priority ?? 'medium']}</span>
             {project.deadline ? <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">{formatDeadline(project.deadline)}</span> : null}
           </div>
-          <Link to={`/projects/${project.id}`} className="mt-3 block truncate text-xl font-semibold text-(--text-primary) transition-colors duration-200 hover:text-(--accent)">
+          <Link to={`/projects/${project.id}`} className="mt-3 block truncate text-lg font-semibold text-(--text-primary) transition-colors duration-200 hover:text-(--accent)">
             {project.title}
           </Link>
-          <p className="mt-2 line-clamp-2 text-sm text-(--text-muted)">{project.description || 'Описание проекта пока не заполнено.'}</p>
+          <p className="mt-2 line-clamp-1 text-sm text-(--text-muted) md:line-clamp-2">{project.description || 'Описание проекта пока не заполнено.'}</p>
         </div>
-        <details className="relative shrink-0">
-          <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-2xl border border-(--border) bg-(--panel-elevated) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)">
-            <MoreHorizontal size={18} strokeWidth={2} />
-          </summary>
-          <div className="absolute right-0 top-12 z-10 min-w-40 rounded-2xl border border-(--border) bg-(--panel) p-2 shadow-(--shadow-floating)">
-            <button type="button" onClick={() => onEdit(project)} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-(--text-secondary) transition hover:bg-(--panel-elevated) hover:text-(--text-primary)">
-              Редактировать
-            </button>
-            <button type="button" onClick={() => onDelete(project)} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-(--danger-text) transition hover:bg-(--danger-bg)">
-              Удалить
-            </button>
-          </div>
-        </details>
+        <ActionMenu
+          items={[
+            { label: 'Редактировать', onSelect: () => onEdit(project) },
+            { label: 'Удалить', onSelect: () => onDelete(project), tone: 'danger' },
+          ]}
+          triggerClassName="h-10 w-10"
+        />
       </div>
 
       <div className="mt-4 rounded-2xl border border-(--border-soft) bg-(--panel-elevated) p-4">
@@ -68,30 +61,10 @@ export function ProjectCard({ project, counts, completionRate, onEdit, onDelete 
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="ui-panel-elevated px-3 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Задачи</p>
-          <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.tasks}</p>
-        </div>
-        <div className="ui-panel-elevated px-3 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Заметки</p>
-          <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.notes}</p>
-        </div>
-        <div className="ui-panel-elevated px-3 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Идеи</p>
-          <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.ideas}</p>
-        </div>
-        <div className="ui-panel-elevated px-3 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Файлы</p>
-          <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.files}</p>
-        </div>
-      </div>
-
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Link to={`/projects/${project.id}`} className="ui-button-accent px-4 py-2.5 text-sm">
           Открыть
         </Link>
-        {project.goal ? <p className="min-w-0 text-sm text-(--text-secondary)">Цель: <span className="text-(--text-primary)">{project.goal}</span></p> : null}
       </div>
     </article>
   )

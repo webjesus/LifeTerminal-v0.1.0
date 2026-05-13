@@ -1,8 +1,8 @@
 import type { FileItem, Relation } from '../../types'
+import { ActionMenu } from '../ui/ActionMenu'
 import type { RelationSelectableItem } from '../../utils/relations'
 import { FilePreview } from './FilePreview'
 import { fileTypeBadges, fileTypeLabels } from './fileMeta'
-import { LinkedItemsChips } from '../linked/LinkedItemsChips'
 
 type FileCardProps = {
   file: FileItem
@@ -22,7 +22,7 @@ function formatDateTime(value: string) {
   }).format(new Date(value))
 }
 
-export function FileCard({ file, relations, catalog, onOpenPath, onChangeLinks, onOpen, onEdit, onDelete }: FileCardProps) {
+export function FileCard({ file, onOpen, onEdit, onDelete }: FileCardProps) {
   return (
     <article className="ui-panel ui-card-hover overflow-hidden">
       <div
@@ -35,72 +35,48 @@ export function FileCard({ file, relations, catalog, onOpenPath, onChangeLinks, 
             onOpen(file)
           }
         }}
-        className="block w-full cursor-pointer select-none text-left p-5 outline-none"
+        className="block w-full cursor-pointer select-none text-left p-4 outline-none md:p-5"
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex rounded-full border border-(--warning-border) bg-(--warning-bg) px-3 py-1 text-[11px] font-medium tracking-[0.16em] text-(--warning-text)">
             {fileTypeBadges[file.type]}
           </span>
-          <span className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{fileTypeLabels[file.type]}</span>
-        </div>
+              <span className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{fileTypeLabels[file.type]}</span>
+              {file.tags[0] ? <span className="ui-chip">#{file.tags[0]}</span> : null}
+            </div>
 
-        <h3 className="mt-3 text-xl font-semibold text-(--text-primary)">{file.title}</h3>
-        <p className="mt-2 line-clamp-2 text-sm text-(--text-muted)">{file.description || file.photoNote || 'Описание не добавлено.'}</p>
+            <h3 className="mt-3 text-lg font-semibold text-(--text-primary)">{file.title}</h3>
+            <p className="mt-2 line-clamp-2 text-sm text-(--text-muted)">{file.description || file.photoNote || 'Описание не добавлено.'}</p>
+          </div>
+
+          <ActionMenu
+            items={[
+              { label: 'Открыть', onSelect: () => onOpen(file) },
+              { label: 'Редактировать', onSelect: () => onEdit(file) },
+              { label: 'Удалить', onSelect: () => onDelete(file), tone: 'danger' },
+            ]}
+          />
+        </div>
 
         <div className="mt-4">
           <FilePreview file={file} compact />
         </div>
-
-        {file.tags.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {file.tags.map((tag) => (
-              <span key={tag} className="ui-chip">
-                #{tag}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mt-4 rounded-2xl border border-(--border) bg-(--panel-elevated) p-4">
-          <LinkedItemsChips
-            itemId={file.id}
-            itemType="file"
-            relations={relations}
-            catalog={catalog}
-            onOpenPath={onOpenPath}
-            onChangeLinks={onChangeLinks}
-          />
-        </div>
       </div>
 
-      <div className="grid gap-3 border-t border-(--border-soft) bg-(--panel-elevated) px-5 py-4 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div className="text-sm text-(--text-muted)">
-          <p>Путь: {file.path || 'не указан'}</p>
-          <p className="mt-1">Обновлено: {formatDateTime(file.updatedAt)}</p>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onEdit(file)
-            }}
-            className="ui-button px-4 py-2"
-          >
-            Редактировать
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onDelete(file)
-            }}
-            className="ui-button-danger px-4 py-2"
-          >
-            Удалить
-          </button>
-        </div>
+      <div className="flex items-center justify-between gap-3 border-t border-(--border-soft) bg-(--panel-elevated) px-4 py-3 md:px-5">
+        <p className="text-xs text-(--text-muted)">Обновлено {formatDateTime(file.updatedAt)}</p>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpen(file)
+          }}
+          className="ui-button px-3 py-2"
+        >
+          Открыть
+        </button>
       </div>
     </article>
   )
