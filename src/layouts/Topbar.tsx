@@ -8,7 +8,7 @@ export function Topbar() {
   const shouldShowSettingsAction = currentPage.section !== 'settings'
 
   return (
-    <header className="sticky top-0 z-20 border-b border-(--border) bg-[color-mix(in_oklab,var(--panel)_96%,transparent)] px-4 py-2.5 md:px-7 md:py-4">
+    <header className="ui-surface-floating sticky top-0 z-20 border-b px-4 py-2.5 md:px-7 md:py-4">
       <div className="flex min-h-11 items-center justify-between gap-3 md:min-h-12">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-3">

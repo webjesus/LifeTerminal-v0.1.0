@@ -82,7 +82,7 @@ export function LinkedItemsChips({
                 event.stopPropagation()
                 onOpenPath(getLinkedItemPath(item))
               }}
-              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-(--border-soft) bg-(--panel-elevated) px-3 py-1.5 text-xs text-(--text-secondary) shadow-[0_2px_8px_rgba(11,16,32,0.04)] transition-all duration-200 hover:border-(--accent-border) hover:text-(--text-primary)"
+              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-(--border-soft) bg-(--panel-elevated) px-3 py-1.5 text-xs text-(--text-secondary) shadow-(--shadow-soft) transition-all duration-200 hover:border-(--accent-border) hover:text-(--text-primary)"
             >
               <span className="text-(--text-muted)">{chipLabel(item)}</span>
               <span className="max-w-[18rem] truncate">{item.title}</span>

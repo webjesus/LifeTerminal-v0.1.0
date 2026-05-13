@@ -60,6 +60,7 @@ export const projectActivityTypeLabels: Record<ProjectActivityType, string> = {
 }
 
 export const projectWorkspaceRelationLabels: Record<ProjectWorkspaceRelationType, string> = {
+  hierarchy: 'Иерархия',
   related: 'Связано',
   depends_on: 'Зависит от',
   supports: 'Поддерживает',

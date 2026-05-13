@@ -276,6 +276,7 @@ export function normalizeProjectWorkspaceBlock(block: Partial<ProjectWorkspaceBl
     content: typeof block.content === 'string' ? block.content : '',
     description: typeof block.description === 'string' ? block.description : '',
     sectionId: typeof block.sectionId === 'string' ? block.sectionId : null,
+    visualVariant: typeof block.visualVariant === 'string' ? block.visualVariant as ProjectWorkspaceBlock['visualVariant'] : undefined,
     x: normalizeNumber(block.x),
     y: normalizeNumber(block.y),
     width: normalizeNumber(block.width),

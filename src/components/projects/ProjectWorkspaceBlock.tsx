@@ -1,4 +1,4 @@
-import { CheckSquare, FileText, GripVertical, ImageIcon, Lightbulb, Link2, MessageCircle, NotebookText, Target, Type } from 'lucide-react'
+import { CheckSquare, FileText, GripVertical, ImageIcon, Lightbulb, Link2, MessageCircle, NotebookText, Pencil, Target, Type } from 'lucide-react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { ProjectWorkspaceBlock } from '../../types'
 import { cn } from '../../utils/cn'
@@ -25,9 +25,9 @@ interface ProjectWorkspaceBlockProps {
   onSelect?: (blockId: string) => void
   onEdit?: (blockId: string) => void
   mode?: 'canvas' | 'list'
-  onDragStart?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
-  onDragMove?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
-  onDragEnd?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
+  onDragStart?: (blockId: string, event: ReactPointerEvent<HTMLElement>) => void
+  onDragMove?: (blockId: string, event: ReactPointerEvent<HTMLElement>) => void
+  onDragEnd?: (blockId: string, event: ReactPointerEvent<HTMLElement>) => void
   onResizeStart?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
   onResizeMove?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
   onResizeEnd?: (blockId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -86,21 +86,40 @@ export function ProjectWorkspaceBlock({
   onResizeEnd,
 }: ProjectWorkspaceBlockProps) {
   const isCanvas = mode === 'canvas' && typeof block.x === 'number' && typeof block.y === 'number'
-  const hasImagePreview = Boolean(block.imageUrl || block.previewUrl || block.dataUrl)
-  const isImageCanvas = isCanvas && block.type === 'image' && hasImagePreview
+  const imageSrc = block.imageUrl || block.previewUrl || block.dataUrl || ''
+  const hasImagePreview = Boolean(imageSrc)
+  const isImageBlock = (block.type === 'image' || (block.type === 'file' && hasImagePreview)) && hasImagePreview
+  const isVisualTemplate = Boolean(block.visualVariant)
   const previewText = block.description || block.content || ''
-  const hasPendingMvpState = block.type === 'drawing' || block.type === 'comment'
-  const resolvedWidth = Math.min(360, Math.max(260, block.width ?? 280))
+  const hasPendingMvpState = (block.type === 'drawing' || block.type === 'comment') && !isVisualTemplate
+  const resolvedWidth = Math.min(720, Math.max(220, block.width ?? (isImageBlock ? 320 : 280)))
+  const resolvedHeight = Math.min(640, Math.max(180, block.height ?? (isImageBlock ? 280 : 170)))
   const TypeIcon = TYPE_ICONS[block.type]
+
+  function formatBytes(size?: number) {
+    if (!size || size <= 0) {
+      return null
+    }
+
+    if (size < 1024) {
+      return `${size} Б`
+    }
+
+    if (size < 1024 * 1024) {
+      return `${(size / 1024).toFixed(1)} КБ`
+    }
+
+    return `${(size / (1024 * 1024)).toFixed(2)} МБ`
+  }
+
+  const fileSizeLabel = formatBytes(block.fileSize)
 
   return (
     <div
       className={cn(
-        'min-w-0 max-w-full overflow-hidden rounded-2xl border border-(--border) bg-(--panel-elevated) shadow-(--shadow-soft) transition',
-        isImageCanvas ? 'p-0' : 'p-3',
+        'min-w-0 max-w-full rounded-2xl ui-shadow-soft transition',
         mode === 'list' && 'cursor-pointer',
         isCanvas && 'absolute touch-none',
-        selected && 'border-(--accent-border) bg-(--accent-soft)',
         (dragging || resizing) && 'cursor-grabbing',
       )}
       style={{
@@ -109,9 +128,9 @@ export function ProjectWorkspaceBlock({
               left: Math.max(24, block.x ?? 24),
               top: Math.max(24, block.y ?? 24),
               width: resolvedWidth,
-              minWidth: 260,
-              maxWidth: 360,
-              height: isImageCanvas ? Math.max(180, block.height ?? 240) : block.height || 'auto',
+              minWidth: isImageBlock ? 220 : 260,
+              maxWidth: isImageBlock ? 720 : 360,
+              height: isImageBlock ? resolvedHeight : block.height || 'auto',
               position: 'absolute' as const,
               zIndex: dragging || resizing ? 30 : selected ? 20 : 10,
             }
@@ -121,58 +140,170 @@ export function ProjectWorkspaceBlock({
       }}
       tabIndex={0}
       onClick={() => onSelect?.(block.id)}
-      onDoubleClick={() => onEdit?.(block.id)}
     >
-      {isImageCanvas ? (
+      <div
+        className={cn(
+          'relative overflow-hidden rounded-[inherit] border border-[var(--workspace-block-border)] bg-[var(--workspace-block-bg)]',
+          isImageBlock ? 'h-full p-0' : 'p-3',
+          selected && 'border-(--accent-border) bg-(--accent-soft)',
+        )}
+      >
+        {isImageBlock ? (
         <>
-          <div className="absolute inset-0 bg-(--panel)">
-            <img src={block.imageUrl || block.previewUrl || block.dataUrl} alt={block.title} className="h-full w-full object-cover" />
-          </div>
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[rgba(11,16,32,0.58)] to-transparent" />
-          <div className="relative flex h-full flex-col justify-between p-3">
-            <div className="flex items-start justify-between gap-3">
+          <div className="flex h-full flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-(--border-soft) bg-(--panel) px-3 py-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-white/90">Фото</span>
-                  {block.linkedItemType ? <span className="rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-white/90">{LINKED_LABELS[block.linkedItemType]}</span> : null}
+                  <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-(--text-secondary)">{block.type === 'file' ? 'Файл / фото' : 'Фото'}</span>
+                  {block.linkedItemType ? <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-(--accent)">{LINKED_LABELS[block.linkedItemType]}</span> : null}
                 </div>
-                <p className="mt-2 truncate text-sm font-semibold text-white">{block.title}</p>
+                <p className="mt-2 truncate text-sm font-semibold text-(--text-primary)">{block.title}</p>
+                {block.fileName ? <p className="mt-1 truncate text-xs text-(--text-muted)">{block.fileName}</p> : null}
               </div>
+              <div className="flex items-center gap-2">
+                {mode === 'canvas' ? (
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    aria-label="Переместить блок"
+                    onPointerDown={(event) => onDragStart?.(block.id, event)}
+                    onPointerMove={(event) => onDragMove?.(block.id, event)}
+                    onPointerUp={(event) => onDragEnd?.(block.id, event)}
+                    onPointerCancel={(event) => onDragEnd?.(block.id, event)}
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel-elevated) text-(--text-muted) touch-none',
+                      dragging ? 'cursor-grabbing' : 'cursor-grab',
+                    )}
+                  >
+                    <GripVertical size={16} />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  data-no-pan="true"
+                  aria-label="Редактировать блок"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onEdit?.(block.id)
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel-elevated) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-(--panel-elevated) p-3">
+              <div
+                className="relative flex h-full min-h-[180px] items-center justify-center overflow-hidden rounded-2xl border border-(--border-soft) bg-(--panel)"
+                style={{
+                  backgroundImage: 'linear-gradient(45deg, color-mix(in srgb, var(--border-soft) 72%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--border-soft) 72%, transparent) 75%), linear-gradient(45deg, color-mix(in srgb, var(--border-soft) 72%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--border-soft) 72%, transparent) 75%)',
+                  backgroundPosition: '0 0, 10px 10px',
+                  backgroundSize: '20px 20px',
+                }}
+              >
+                <img src={imageSrc} alt={block.title} className="max-h-full max-w-full object-contain" />
+              </div>
+            </div>
+
+            <div className="border-t border-(--border-soft) bg-(--panel) px-3 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex min-w-0 flex-wrap gap-2">
+                    {sectionTitle ? <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-(--text-secondary)">{sectionTitle}</span> : null}
+                    {fileSizeLabel ? <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-(--text-secondary)">{fileSizeLabel}</span> : null}
+                    {relationSummary?.total ? <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-(--text-secondary)">Связи: {relationSummary.total}</span> : null}
+                  </div>
+                  {block.tags?.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {block.tags.slice(0, 4).map((tag) => (
+                        <span key={tag} className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2 py-0.5 text-xs text-(--text-muted)">#{tag}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-no-pan="true"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      window.open(imageSrc, '_blank', 'noopener,noreferrer')
+                    }}
+                    className="ui-button px-3 py-2 text-xs"
+                  >
+                    Открыть
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {mode === 'canvas' ? (
+            <button
+              type="button"
+              data-no-pan="true"
+              aria-label="Изменить размер блока"
+              onPointerDown={(event) => onResizeStart?.(block.id, event)}
+              onPointerMove={(event) => onResizeMove?.(block.id, event)}
+              onPointerUp={(event) => onResizeEnd?.(block.id, event)}
+              onPointerCancel={(event) => onResizeEnd?.(block.id, event)}
+              className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-xl border border-(--border-soft) bg-(--panel) text-(--text-muted) opacity-85 shadow-(--shadow-soft) transition hover:opacity-100 touch-none cursor-nwse-resize"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M5 11L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M8.5 11H11V8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          ) : null}
+        </>
+      ) : isCanvas && isVisualTemplate ? (
+        <>
+          <div
+            className={cn(
+              'absolute inset-0 overflow-hidden rounded-[inherit] border transition',
+              block.visualVariant === 'template-header' && 'border-(--accent-border) bg-linear-to-br from-(--accent-soft) via-(--panel-elevated) to-(--panel)',
+              block.visualVariant === 'template-node' && 'border-(--border-soft) bg-linear-to-br from-(--panel-elevated) via-(--panel) to-(--panel-elevated)',
+              block.visualVariant === 'template-panel' && 'border-(--border) bg-linear-to-br from-(--panel-elevated) via-(--panel) to-(--panel)',
+              block.visualVariant === 'template-step' && 'border-(--border-soft) bg-linear-to-r from-(--panel-elevated) via-(--panel) to-(--panel-elevated)',
+              selected && 'border-(--accent-border)',
+            )}
+          >
+            <div className="absolute inset-0 opacity-70" style={{ backgroundImage: 'radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 45%)' }} />
+            <div className="absolute inset-x-4 top-4 h-px bg-linear-to-r from-transparent via-(--border) to-transparent opacity-60" />
+            <div className="absolute inset-x-4 bottom-4 h-px bg-linear-to-r from-transparent via-(--border-soft) to-transparent opacity-50" />
+          </div>
+          <div className="relative flex h-full flex-col justify-between p-3">
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
+                data-no-pan="true"
                 aria-label="Переместить блок"
                 onPointerDown={(event) => onDragStart?.(block.id, event)}
                 onPointerMove={(event) => onDragMove?.(block.id, event)}
                 onPointerUp={(event) => onDragEnd?.(block.id, event)}
                 onPointerCancel={(event) => onDragEnd?.(block.id, event)}
                 className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] text-white touch-none',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) touch-none backdrop-blur-sm',
                   dragging ? 'cursor-grabbing' : 'cursor-grab',
                 )}
               >
                 <GripVertical size={16} />
               </button>
-            </div>
-
-            <div className="flex items-end justify-between gap-3">
-              <div className="flex min-w-0 flex-wrap gap-2">
-                {sectionTitle ? <span className="rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-white/90">{sectionTitle}</span> : null}
-                {relationSummary?.total ? <span className="rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-white/90">Связи: {relationSummary.total}</span> : null}
-              </div>
               <button
                 type="button"
-                aria-label="Изменить размер блока"
-                onPointerDown={(event) => onResizeStart?.(block.id, event)}
-                onPointerMove={(event) => onResizeMove?.(block.id, event)}
-                onPointerUp={(event) => onResizeEnd?.(block.id, event)}
-                onPointerCancel={(event) => onResizeEnd?.(block.id, event)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-[rgba(11,16,32,0.42)] text-white touch-none cursor-se-resize"
+                data-no-pan="true"
+                aria-label="Редактировать блок"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onEdit?.(block.id)
+                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M5 11L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <path d="M8.5 11H11V8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <Pencil size={14} />
               </button>
+            </div>
+            <div className="flex justify-end">
+              <div className="h-2.5 w-14 rounded-full bg-linear-to-r from-(--border-soft) via-(--border) to-(--border-soft) opacity-70" />
             </div>
           </div>
         </>
@@ -186,23 +317,41 @@ export function ProjectWorkspaceBlock({
               </div>
             </div>
             {mode === 'canvas' ? (
-              <button
-                type="button"
-                aria-label="Переместить блок"
-                onPointerDown={(event) => onDragStart?.(block.id, event)}
-                onPointerMove={(event) => onDragMove?.(block.id, event)}
-                onPointerUp={(event) => onDragEnd?.(block.id, event)}
-                onPointerCancel={(event) => onDragEnd?.(block.id, event)}
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) touch-none',
-                  dragging ? 'cursor-grabbing' : 'cursor-grab',
-                )}
-              >
-                <GripVertical size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-no-pan="true"
+                  aria-label="Переместить блок"
+                  onPointerDown={(event) => onDragStart?.(block.id, event)}
+                  onPointerMove={(event) => onDragMove?.(block.id, event)}
+                  onPointerUp={(event) => onDragEnd?.(block.id, event)}
+                  onPointerCancel={(event) => onDragEnd?.(block.id, event)}
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) touch-none',
+                    dragging ? 'cursor-grabbing' : 'cursor-grab',
+                  )}
+                >
+                  <GripVertical size={16} />
+                </button>
+                <button
+                  type="button"
+                  data-no-pan="true"
+                  aria-label="Редактировать блок"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onEdit?.(block.id)
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-soft) bg-(--panel) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
             ) : null}
           </div>
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.14em] text-(--text-muted)">
+            {isVisualTemplate ? (
+              <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-2.5 py-0.5 text-[10px] tracking-[0.12em] text-(--accent)">Визуальный шаблон</span>
+            ) : null}
             <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2.5 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">{TYPE_LABELS[block.type]}</span>
             {block.linkedItemType ? (
               <span className="rounded-full border border-(--border-soft) bg-(--panel) px-2 py-0.5 text-[10px] tracking-[0.12em] text-(--text-secondary)">
@@ -234,7 +383,7 @@ export function ProjectWorkspaceBlock({
           {(block.type === 'text' || block.type === 'task' || block.type === 'note' || block.type === 'idea' || block.type === 'goal' || block.type === 'comment') && previewText ? (
             <div className="mb-1 line-clamp-4 wrap-break-word text-sm text-(--text-secondary)">{previewText}</div>
           ) : null}
-          {block.type === 'image' && (block.imageUrl || block.previewUrl || block.dataUrl) ? <img src={block.imageUrl || block.previewUrl || block.dataUrl} alt={block.title} className="mb-2 h-40 w-full rounded-lg object-cover" /> : null}
+          {block.type === 'image' && hasImagePreview ? <img src={imageSrc} alt={block.title} className="mb-2 h-48 w-full rounded-lg object-contain" /> : null}
           {block.type === 'file' ? (
             <div className="mb-2 rounded-lg border border-(--border-soft) bg-(--panel) p-3">
               <p className="truncate text-sm font-medium text-(--text-primary)">{block.fileName || block.title}</p>
@@ -247,6 +396,7 @@ export function ProjectWorkspaceBlock({
               <div className="truncate text-sm text-(--accent)">{block.externalUrl}</div>
               <button
                 type="button"
+                data-no-pan="true"
                 onClick={(event) => {
                   event.stopPropagation()
                   window.open(block.externalUrl, '_blank', 'noopener,noreferrer')
@@ -283,6 +433,7 @@ export function ProjectWorkspaceBlock({
           ) : null}
         </>
       )}
+      </div>
     </div>
   )
 }

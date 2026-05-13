@@ -106,7 +106,7 @@ export function ProjectRelationMap({
         title: section.title,
         subtitle: section.description || 'Подраздел проекта',
         badge: 'SEC',
-        badgeClassName: 'border-[#e0e5ee] bg-[#f7f9fc] text-[#667085]',
+        badgeClassName: 'border-(--border-soft) bg-(--panel) text-(--text-secondary)',
       })),
       ...tasks.map((task) => ({
         id: task.id,
@@ -210,7 +210,7 @@ export function ProjectRelationMap({
                       setSelectedNodeId(node.id)
                       onOpenNode({ id: node.id, type: node.type })
                     }}
-                    className="w-full rounded-2xl border border-(--border-soft) bg-(--panel) p-4 text-left shadow-[0_4px_12px_rgba(11,16,32,0.05)]"
+                    className="w-full rounded-2xl border border-(--border-soft) bg-(--panel) p-4 text-left shadow-(--shadow-soft)"
                   >
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-[0.16em] ${node.badgeClassName}`}>
@@ -267,12 +267,12 @@ export function ProjectRelationMap({
                         setSelectedNodeId(node.id)
                         onOpenNode({ id: node.id, type: node.type })
                       }}
-                      className={`absolute overflow-hidden rounded-2xl border p-4 text-left shadow-[0_12px_32px_rgba(0,0,0,0.24)] transition-all duration-200 ${
+                      className={`absolute overflow-hidden rounded-2xl border p-4 text-left shadow-(--shadow-soft) transition-all duration-200 ${
                         isSelected
                           ? 'border-(--accent-border) bg-(--accent-soft) ring-1 ring-(--accent-border)'
                           : isHighlighted
-                            ? 'border-(--accent-border) bg-[#f8f7ff]'
-                            : 'border-(--border-soft) bg-(--panel) hover:border-(--accent-border) hover:bg-[#f8f7ff]'
+                            ? 'border-(--accent-border) bg-(--accent-soft)'
+                            : 'border-(--border-soft) bg-(--panel) hover:border-(--accent-border) hover:bg-(--accent-soft)'
                       }`}
                       style={{ left: position.left, top: position.top, width: layout.cardWidth, height: layout.cardHeight }}
                     >

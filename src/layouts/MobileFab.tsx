@@ -17,7 +17,7 @@ export function MobileFab() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-(--accent) text-3xl leading-none text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] md:hidden"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-(--accent) text-3xl leading-none text-white shadow-(--shadow-accent) md:hidden"
         aria-label="Быстрое добавление"
       >
         +
@@ -32,14 +32,16 @@ export function MobileFab() {
             className="absolute inset-0 bg-(--overlay)"
           />
 
-          <section className="absolute inset-x-0 bottom-0 max-h-[min(82dvh,720px)] overflow-y-auto rounded-t-[28px] border border-(--border) bg-(--panel) px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-5 shadow-[var(--shadow-soft)]">
-            <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-(--border)" />
-            <h3 className="text-lg font-semibold text-(--text-primary)">Быстрое добавление</h3>
-            <p className="mt-1 text-sm text-(--text-muted)">Задача, заметка, идея, контекст проекта или напоминание.</p>
-            <div className="mt-4">
-              <QuickAddInput compact />
-            </div>
-          </section>
+          <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] ui-shadow-floating">
+            <section className="ui-surface-floating max-h-[min(82dvh,720px)] overflow-y-auto rounded-t-[28px] border px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-5">
+              <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-(--border)" />
+              <h3 className="text-lg font-semibold text-(--text-primary)">Быстрое добавление</h3>
+              <p className="mt-1 text-sm text-(--text-muted)">Задача, заметка, идея, контекст проекта или напоминание.</p>
+              <div className="mt-4">
+                <QuickAddInput compact />
+              </div>
+            </section>
+          </div>
         </div>
       ) : null}
     </>

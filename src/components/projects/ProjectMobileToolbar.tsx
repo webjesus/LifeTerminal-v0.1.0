@@ -12,7 +12,7 @@ export function ProjectMobileToolbar({ onAdd, onCreateText, onCreateTask, onCrea
   return (
     <div className="lg:hidden">
       <div
-        className="fixed left-4 right-4 z-30 rounded-3xl border border-(--border) bg-(--panel) p-2 shadow-(--shadow-soft)"
+        className="fixed left-4 right-4 z-30 rounded-3xl border border-(--border) bg-(--panel) p-2 shadow-(--shadow-floating)"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
       >
         <div className="grid grid-cols-5 gap-2">

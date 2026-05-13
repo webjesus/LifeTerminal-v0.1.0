@@ -3,22 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState } from '../components/projects/EmptyState'
 import { ProjectCard } from '../components/projects/ProjectCard'
 import { ProjectFormModal, type ProjectFormValues } from '../components/projects/ProjectFormModal'
-import { createProjectSection, defaultProjectSectionTitles, projectStatusLabels } from '../components/projects/projectMeta'
+import { createProjectSection, defaultProjectSectionTitles } from '../components/projects/projectMeta'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useAppSettings } from '../settings/useAppSettings'
 import type { FileItem, Goal, Idea, Note, Project, ProjectSection, Relation, Task } from '../types'
 import { buildRelationCatalog, deleteRelationsForItem, getLinkedItemPath, getLinkedItemsFromRelations, isEditableRelation, syncRelationsForItem } from '../utils/relations'
 import { storageKeys } from '../utils/storage'
-
-type ProjectFilter = 'all' | 'active' | 'paused' | 'completed' | 'archived'
-
-const filterLabels: Record<ProjectFilter, string> = {
-  all: 'Все',
-  active: 'Активные',
-  paused: 'На паузе',
-  completed: 'Завершённые',
-  archived: 'Архив',
-}
 
 function toDeadlineValue(value: string) {
   if (!value) {
@@ -99,8 +89,6 @@ export function ProjectsPage() {
   const { value: relations } = useLocalStorage<Relation[]>(storageKeys.relations, [])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<ProjectFilter>('all')
-  const [searchQuery, setSearchQuery] = useState('')
 
   const editingProject = useMemo(
     () => projects.find((project) => project.id === editingProjectId) ?? null,
@@ -108,20 +96,6 @@ export function ProjectsPage() {
   )
 
   const sortedProjects = useMemo(() => [...projects].sort(compareProjects), [projects])
-
-  const filteredProjects = useMemo(() => {
-    const byStatus = activeFilter === 'all'
-      ? sortedProjects
-      : sortedProjects.filter((project) => project.status === activeFilter)
-
-    const normalizedQuery = searchQuery.trim().toLowerCase()
-
-    if (!normalizedQuery) {
-      return byStatus
-    }
-
-    return byStatus.filter((project) => [project.title, project.description, ...(project.tags ?? [])].join(' ').toLowerCase().includes(normalizedQuery))
-  }, [activeFilter, searchQuery, sortedProjects])
 
   const projectCounts = useMemo(() => {
     return Object.fromEntries(
@@ -162,7 +136,8 @@ export function ProjectsPage() {
     () => ({
       total: projects.length,
       active: projects.filter((project) => project.status === 'active').length,
-      paused: projects.filter((project) => project.status === 'paused').length,
+      inactive: projects.filter((project) => project.status === 'paused' || project.status === 'planning').length,
+      completed: projects.filter((project) => project.status === 'completed').length,
       archived: projects.filter((project) => project.status === 'archived').length,
     }),
     [projects],
@@ -277,79 +252,44 @@ export function ProjectsPage() {
 
   return (
     <section className="space-y-6">
-      <header className="ui-panel p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+      <header className="ui-panel p-5 md:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-(--text-muted)">Проекты</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary) md:text-4xl">Проекты</h1>
-            <p className="page-description mt-2 max-w-3xl text-sm text-(--text-muted) md:text-base">
-              Главная рабочая поверхность Life OS. Здесь создаются проекты, формируется контекст, а затем каждый проект раскрывается в отдельное рабочее пространство.
+            <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">Проекты</p>
+            <h1 className="mt-2 text-3xl font-semibold leading-tight text-(--text-primary)">Проекты</h1>
+            <p className="mt-2 max-w-3xl text-sm text-(--text-secondary)">
+              Создавайте рабочие пространства для задач, идей, заметок, файлов и целей.
             </p>
           </div>
 
           <button
             type="button"
             onClick={openCreateModal}
-            className="ui-button-accent px-5 py-3"
+            className="ui-button-accent px-5 py-3 lg:self-start"
           >
             Создать проект
           </button>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Всего</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.total}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{projectStatusLabels.active}</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.active}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{projectStatusLabels.paused}</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.paused}</p>
-          </div>
-          <div className="ui-stat-card">
-            <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{projectStatusLabels.archived}</p>
-            <p className="mt-2 text-3xl font-semibold text-(--text-primary)">{stats.archived}</p>
-          </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            { label: 'Всего', value: stats.total },
+            { label: 'Активные', value: stats.active },
+            { label: 'На паузе', value: stats.inactive },
+            { label: 'Завершённые', value: stats.completed },
+            { label: 'Архив', value: stats.archived },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-(--border) bg-(--panel-elevated) px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">{item.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-(--text-primary)">{item.value}</p>
+            </div>
+          ))}
         </div>
       </header>
 
-      <section className="ui-panel p-5">
-        <div className="ui-filter-scroll">
-          {(Object.keys(filterLabels) as ProjectFilter[]).map((filter) => (
-            <button
-              key={filter}
-              type="button"
-              onClick={() => setActiveFilter(filter)}
-              className={[
-                'ui-filter-pill',
-                activeFilter === filter
-                  ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
-                  : 'hover:border-(--accent-border) hover:text-(--text-primary)',
-              ].join(' ')}
-            >
-              {filterLabels[filter]}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4">
-          <label className="text-sm text-(--text-secondary)" htmlFor="projects-search">Поиск по названию, описанию и тегам</label>
-          <input
-            id="projects-search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="ui-input mt-2"
-            placeholder="Например, запуск, личный, исследование"
-          />
-        </div>
-      </section>
-
-      {filteredProjects.length > 0 ? (
+      {sortedProjects.length > 0 ? (
         <div className="grid gap-5 2xl:grid-cols-2">
-          {filteredProjects.map((project) => (
+          {sortedProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

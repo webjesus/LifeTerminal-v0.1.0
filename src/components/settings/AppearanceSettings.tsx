@@ -28,7 +28,7 @@ function ToggleRow({ title, description, checked, onChange }: ToggleRowProps) {
       >
         <span
           className={[
-            'inline-flex h-6 w-6 items-center justify-center rounded-full bg-(--input-bg) text-(--accent) shadow-[0_2px_8px_rgba(11,16,32,0.12)] transition-transform duration-200',
+            'inline-flex h-6 w-6 items-center justify-center rounded-full bg-(--input-bg) text-(--accent) shadow-(--shadow-soft) transition-transform duration-200',
             checked ? 'translate-x-[1.4rem]' : 'translate-x-1',
           ].join(' ')}
         >

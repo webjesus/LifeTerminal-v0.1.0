@@ -5,15 +5,24 @@ import { navigationItems } from '../data/navigation'
 import { useAppSettings } from '../settings/useAppSettings'
 import { cn } from '../utils/cn'
 
-export function Sidebar() {
+type SidebarProps = {
+  compact?: boolean
+}
+
+export function Sidebar({ compact = false }: SidebarProps) {
   const { settings } = useAppSettings()
   const visibleNavigationItems = navigationItems.filter((item) => item.displayKey ? settings.display.visibleModules[item.displayKey] : true)
 
   return (
-    <aside className="hidden border-r border-(--border) bg-(--panel) md:sticky md:top-0 md:block md:h-dvh md:w-78 md:overflow-y-auto">
-      <div className="p-4">
-        <div className="ui-panel mb-3 flex min-h-22 items-center justify-center p-3.5">
-          <LogoMark />
+    <aside
+      className={cn(
+        'ui-surface-panel hidden border-r transition-[width] duration-200 ease-out md:sticky md:top-0 md:block md:h-dvh md:overflow-y-auto',
+        compact ? 'md:w-20' : 'md:w-78',
+      )}
+    >
+      <div className={cn(compact ? 'p-3' : 'p-4')}>
+        <div className={cn('ui-panel mb-3 flex items-center justify-center', compact ? 'min-h-16 p-3' : 'min-h-22 p-3.5')}>
+          <LogoMark showText={!compact} className={compact ? 'justify-center' : ''} iconClassName={compact ? 'h-8 w-8' : 'h-10 w-10'} />
         </div>
 
         <nav className="grid grid-cols-1 gap-2.5">
@@ -21,11 +30,14 @@ export function Sidebar() {
             <NavLink
               key={item.path}
               to={item.path}
+              title={compact ? item.label : undefined}
+              aria-label={compact ? item.label : undefined}
               className={({ isActive }) =>
                 cn(
-                  'group flex min-h-12 items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-sm transition-all duration-200',
+                  'group flex min-h-12 rounded-2xl border text-sm transition-all duration-200',
+                  compact ? 'justify-center px-2.5 py-2.5' : 'items-center gap-3 px-3.5 py-2.5',
                   isActive
-                    ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-[var(--shadow-panel-elevated)]'
+                    ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent) shadow-(--shadow-soft)'
                     : 'border-(--border-soft) bg-(--panel-elevated) text-(--text-secondary) hover:border-(--accent-border) hover:bg-(--panel) hover:text-(--text-primary)',
                 )
               }
@@ -33,7 +45,9 @@ export function Sidebar() {
               <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-(--border-soft) bg-(--panel-elevated) text-(--text-muted) transition-colors group-hover:border-(--accent-border) group-hover:text-(--accent)">
                 <SectionIcon section={item.section} />
               </span>
-              <span className="min-w-0 text-[0.95rem] font-medium leading-none">{item.label}</span>
+              <span className={cn('min-w-0 text-[0.95rem] font-medium leading-none', compact && 'hidden')}>
+                {item.label}
+              </span>
             </NavLink>
           ))}
         </nav>

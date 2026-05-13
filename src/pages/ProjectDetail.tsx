@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { PencilLine, SlidersHorizontal } from 'lucide-react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/projects/EmptyState'
 import { ProjectAddElementSheet } from '../components/projects/ProjectAddElementSheet'
@@ -38,6 +40,7 @@ import type {
   ProjectSection,
   ProjectWorkspaceBlock,
   ProjectWorkspaceRelation,
+  ProjectWorkspaceTemplatePreset,
   Relation,
   RelationEntityType,
   Task,
@@ -66,6 +69,7 @@ import {
   syncRelationsForItem,
 } from '../utils/relations'
 import { calculateGoalProgress, calculateProjectProgress, getProjectStats } from '../utils/projectProgress'
+import { cn } from '../utils/cn'
 import { storageKeys } from '../utils/storage'
 
 function uniqueIds(ids: string[]) {
@@ -142,6 +146,10 @@ function getSuggestedWorkspaceRelationType(
   fromBlock: ProjectWorkspaceBlock,
   toBlock: ProjectWorkspaceBlock,
 ): ProjectWorkspaceRelation['type'] {
+  if (fromBlock.visualVariant || toBlock.visualVariant) {
+    return 'hierarchy'
+  }
+
   if (fromBlock.type === 'idea' && toBlock.type === 'task') {
     return 'idea_to_task'
   }
@@ -189,8 +197,32 @@ export function ProjectDetailPage() {
     attachmentId?: string | null
   } | null>(null)
   const [isWorkspaceInspectorVisible, setIsWorkspaceInspectorVisible] = useState(true)
+  const [isWorkspaceFullscreen, setIsWorkspaceFullscreen] = useState(false)
+  const [isWorkspaceToolbarVisible, setIsWorkspaceToolbarVisible] = useState(true)
   const [selectedWorkspaceBlockId, setSelectedWorkspaceBlockId] = useState<string | null>(null)
   const [selectedRelationId, setSelectedRelationId] = useState<string | null>(null)
+  const [isWorkspaceCanvasInteracting, setIsWorkspaceCanvasInteracting] = useState(false)
+  const [workspaceInspectorPosition, setWorkspaceInspectorPosition] = useState({ x: 0, y: 0 })
+  const [workspaceInspectorWidth, setWorkspaceInspectorWidth] = useState(360)
+  const [workspaceInspectorHeight, setWorkspaceInspectorHeight] = useState(680)
+  const [workspaceCanvasView, setWorkspaceCanvasView] = useState({ zoom: 1, panX: 0, panY: 0 })
+  const [workspaceResetViewSignal, setWorkspaceResetViewSignal] = useState(0)
+  const [workspaceArrangeSignal, setWorkspaceArrangeSignal] = useState(0)
+  const [isWorkspaceInspectorPositionReady, setIsWorkspaceInspectorPositionReady] = useState(false)
+  const [workspaceInspectorDragState, setWorkspaceInspectorDragState] = useState<{
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  } | null>(null)
+  const [workspaceInspectorResizeState, setWorkspaceInspectorResizeState] = useState<{
+    pointerId: number
+    startX: number
+    startY: number
+    originWidth: number
+    originHeight: number
+  } | null>(null)
   const [relationSourceBlockId, setRelationSourceBlockId] = useState<string | null>(null)
   const [relationDraft, setRelationDraft] = useState<{
     fromBlockId: string
@@ -198,8 +230,11 @@ export function ProjectDetailPage() {
     type: ProjectWorkspaceRelation['type']
     label?: string
   } | null>(null)
+  const workspaceShellRef = useRef<HTMLDivElement | null>(null)
+  const workspaceLayoutRef = useRef<HTMLElement | null>(null)
   const [relationNotice, setRelationNotice] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<string>('select')
+  const [workspaceAvailableHeight, setWorkspaceAvailableHeight] = useState<number | null>(null)
 
   const activeTab = resolveProjectTab(searchParams.get('tab') ?? settings.behavior.defaultProjectView)
   const normalizedProjects = useMemo(() => projects.map(normalizeProject), [projects])
@@ -222,6 +257,168 @@ export function ProjectDetailPage() {
   const workspaceRelationsForProject = useMemo(() => normalizedWorkspaceRelations.filter((relation) => relation.projectId === projectId), [normalizedWorkspaceRelations, projectId])
   const projectGoalsForProject = useMemo(() => normalizedProjectGoals.filter((item) => item.projectId === projectId).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [normalizedProjectGoals, projectId])
   const projectMilestonesForProject = useMemo(() => normalizedProjectMilestones.filter((item) => item.projectId === projectId).sort((a, b) => a.order - b.order), [normalizedProjectMilestones, projectId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isWorkspaceInspectorPositionReady) {
+      return
+    }
+
+    setWorkspaceInspectorPosition({
+      x: Math.max(24, window.innerWidth - 384),
+      y: 132,
+    })
+    setWorkspaceInspectorHeight(Math.min(680, Math.max(460, window.innerHeight - 180)))
+    setIsWorkspaceInspectorPositionReady(true)
+  }, [isWorkspaceInspectorPositionReady])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleResize = () => {
+      setWorkspaceInspectorPosition((current) => ({
+        x: Math.min(Math.max(24, current.x), Math.max(24, window.innerWidth - 384)),
+        y: Math.min(Math.max(112, current.y), Math.max(112, window.innerHeight - 180)),
+      }))
+      setWorkspaceInspectorHeight((current) => Math.min(Math.max(420, current), Math.max(420, window.innerHeight - 140)))
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const handleFullscreenChange = () => {
+      setIsWorkspaceFullscreen(document.fullscreenElement === workspaceShellRef.current)
+    }
+
+    handleFullscreenChange()
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isWorkspaceFullscreen) {
+      return
+    }
+
+    setIsWorkspaceInspectorVisible(true)
+    setIsWorkspaceToolbarVisible(true)
+  }, [isWorkspaceFullscreen])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (activeTab !== 'workspace' || isWorkspaceFullscreen) {
+      setWorkspaceAvailableHeight(null)
+      return
+    }
+
+    const element = workspaceLayoutRef.current
+
+    if (!element) {
+      setWorkspaceAvailableHeight(null)
+      return
+    }
+
+    const updateWorkspaceHeight = () => {
+      if (window.innerWidth < 1024) {
+        setWorkspaceAvailableHeight(null)
+        return
+      }
+
+      const rect = element.getBoundingClientRect()
+      const nextHeight = Math.max(320, Math.floor(window.innerHeight - rect.top - 8))
+      setWorkspaceAvailableHeight(nextHeight)
+    }
+
+    updateWorkspaceHeight()
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => updateWorkspaceHeight())
+      : null
+
+    observer?.observe(element)
+
+    window.addEventListener('resize', updateWorkspaceHeight)
+
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateWorkspaceHeight)
+    }
+  }, [activeTab, isWorkspaceFullscreen])
+
+  function clampWorkspaceInspectorPosition(x: number, y: number) {
+    if (typeof window === 'undefined') {
+      return { x, y }
+    }
+
+    return {
+      x: Math.min(Math.max(24, x), Math.max(24, window.innerWidth - 384)),
+      y: Math.min(Math.max(112, y), Math.max(112, window.innerHeight - 180)),
+    }
+  }
+
+  function shouldIgnoreWorkspaceInspectorDragTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return Boolean(target.closest('button, a, input, textarea, select, option, label, [role="button"], [contenteditable="true"]'))
+  }
+
+  function handleWorkspaceInspectorDragStart(event: ReactPointerEvent<HTMLElement>) {
+    if (shouldIgnoreWorkspaceInspectorDragTarget(event.target)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setWorkspaceInspectorDragState({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: workspaceInspectorPosition.x,
+      originY: workspaceInspectorPosition.y,
+    })
+  }
+
+  function handleWorkspaceInspectorDragMove(event: ReactPointerEvent<HTMLElement>) {
+    if (!workspaceInspectorDragState || workspaceInspectorDragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    const deltaX = event.clientX - workspaceInspectorDragState.startX
+    const deltaY = event.clientY - workspaceInspectorDragState.startY
+    setWorkspaceInspectorPosition(clampWorkspaceInspectorPosition(
+      workspaceInspectorDragState.originX + deltaX,
+      workspaceInspectorDragState.originY + deltaY,
+    ))
+  }
+
+  function handleWorkspaceInspectorDragEnd(event: ReactPointerEvent<HTMLElement>) {
+    if (!workspaceInspectorDragState || workspaceInspectorDragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    setWorkspaceInspectorDragState(null)
+  }
   const projectAttachmentsForProject = useMemo(() => normalizedProjectAttachments.filter((item) => item.projectId === projectId).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [normalizedProjectAttachments, projectId])
   const selectedWorkspaceBlock = useMemo(() => workspaceBlocks.find((item) => item.id === selectedWorkspaceBlockId) ?? null, [selectedWorkspaceBlockId, workspaceBlocks])
   const selectedAttachment = useMemo(() => {
@@ -737,6 +934,128 @@ export function ProjectDetailPage() {
     link: 'Новая ссылка',
     comment: 'Комментарий',
     drawing: 'Схема / рисунок',
+  }
+
+  function handleCreateWorkspaceTemplate(preset: ProjectWorkspaceTemplatePreset) {
+    if (!project) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const sectionId = workspaceSectionFilter !== 'all' && workspaceSectionFilter !== 'none' ? workspaceSectionFilter : null
+    const templateOffset = workspaceBlocks.filter((block) => block.projectId === project.id).length * 36
+
+    const createTemplateBlock = (
+      title: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      visualVariant: NonNullable<ProjectWorkspaceBlock['visualVariant']>,
+    ): ProjectWorkspaceBlock => ({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'comment',
+      title,
+      content: '',
+      description: '',
+      sectionId,
+      visualVariant,
+      x: x + templateOffset,
+      y,
+      width,
+      height,
+      tags: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+
+    let nextBlocks: ProjectWorkspaceBlock[] = []
+    let nextRelations: ProjectWorkspaceRelation[] = []
+
+    if (preset === 'hierarchy') {
+      const root = createTemplateBlock('Корень схемы', 240, 52, 220, 82, 'template-header')
+      const leftNode = createTemplateBlock('Ветка A', 88, 196, 214, 98, 'template-node')
+      const rightNode = createTemplateBlock('Ветка B', 396, 196, 214, 98, 'template-node')
+      const leftPanel = createTemplateBlock('Группа A', 42, 368, 260, 156, 'template-panel')
+      const rightPanel = createTemplateBlock('Группа B', 350, 368, 260, 156, 'template-panel')
+
+      nextBlocks = [root, leftNode, rightNode, leftPanel, rightPanel]
+      nextRelations = [
+        [root.id, leftNode.id],
+        [root.id, rightNode.id],
+        [leftNode.id, leftPanel.id],
+        [rightNode.id, rightPanel.id],
+      ].map(([fromBlockId, toBlockId]) => ({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        fromBlockId,
+        toBlockId,
+        type: 'hierarchy' as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }))
+    }
+
+    if (preset === 'comparison') {
+      const header = createTemplateBlock('Шапка сравнения', 188, 52, 324, 80, 'template-header')
+      const first = createTemplateBlock('Вариант 1', 36, 204, 190, 240, 'template-panel')
+      const second = createTemplateBlock('Вариант 2', 256, 204, 190, 240, 'template-panel')
+      const third = createTemplateBlock('Вариант 3', 476, 204, 190, 240, 'template-panel')
+
+      nextBlocks = [header, first, second, third]
+      nextRelations = [first.id, second.id, third.id].map((toBlockId) => ({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        fromBlockId: header.id,
+        toBlockId,
+        type: 'hierarchy' as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }))
+    }
+
+    if (preset === 'roadmap') {
+      const stepOne = createTemplateBlock('Шаг 1', 36, 220, 148, 116, 'template-step')
+      const stepTwo = createTemplateBlock('Шаг 2', 220, 220, 148, 116, 'template-step')
+      const stepThree = createTemplateBlock('Шаг 3', 404, 220, 148, 116, 'template-step')
+      const stepFour = createTemplateBlock('Шаг 4', 588, 220, 148, 116, 'template-step')
+
+      nextBlocks = [stepOne, stepTwo, stepThree, stepFour]
+      nextRelations = [
+        [stepOne.id, stepTwo.id],
+        [stepTwo.id, stepThree.id],
+        [stepThree.id, stepFour.id],
+      ].map(([fromBlockId, toBlockId]) => ({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        fromBlockId,
+        toBlockId,
+        type: 'hierarchy' as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }))
+    }
+
+    if (nextBlocks.length === 0) {
+      return
+    }
+
+    setProjectWorkspaceBlocks((currentBlocks) => [...nextBlocks, ...currentBlocks])
+    setProjectWorkspaceRelations((currentRelations) => [...nextRelations, ...currentRelations])
+    setSelectedWorkspaceBlockId(nextBlocks[0].id)
+    setIsWorkspaceInspectorVisible(true)
+    appendProjectActivity({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      type: 'workspace_block_created',
+      title: 'Добавлена визуальная группа в рабочую область',
+      description: preset,
+      relatedItemId: nextBlocks[0].id,
+      relatedItemType: null,
+      createdAt: timestamp,
+    })
+    setRelationNotice('Визуальная группа добавлена. Связи можно редактировать вручную.')
   }
 
   function openAttachmentUploader(mode: 'image' | 'file' | 'link', attachmentId?: string | null) {
@@ -1338,6 +1657,10 @@ export function ProjectDetailPage() {
     const timestamp = new Date().toISOString()
     const id = crypto.randomUUID()
     const linkedEntity = createLinkedWorkspaceEntity(type, timestamp)
+    const projectBlocks = workspaceBlocks.filter((block) => block.projectId === project.id)
+    const blockIndex = projectBlocks.length
+    const defaultWidth = type === 'image' ? 320 : 300
+    const defaultHeight = type === 'image' ? 280 : 170
 
     const nextBlock: ProjectWorkspaceBlock = {
       id,
@@ -1350,6 +1673,10 @@ export function ProjectDetailPage() {
       tags: [],
       linkedItemId: linkedEntity?.linkedItemId,
       linkedItemType: linkedEntity?.linkedItemType,
+      x: 32 + (blockIndex % 3) * 340,
+      y: 32 + Math.floor(blockIndex / 3) * 220,
+      width: defaultWidth,
+      height: defaultHeight,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
@@ -1520,10 +1847,6 @@ export function ProjectDetailPage() {
   function handleSelectWorkspaceBlock(blockId: string | null) {
     setSelectedWorkspaceBlockId(blockId)
 
-    if (blockId) {
-      setIsWorkspaceInspectorVisible(true)
-    }
-
     if (!blockId) {
       return
     }
@@ -1567,6 +1890,77 @@ export function ProjectDetailPage() {
       setRelationNotice('Связь между этими блоками уже есть. Можно изменить её тип.')
       setSelectedRelationId(existingRelation.id)
     }
+  }
+
+  function handleEditWorkspaceBlock(blockId: string) {
+    setSelectedWorkspaceBlockId(blockId)
+    setIsWorkspaceInspectorVisible(true)
+  }
+
+  function clampWorkspaceInspectorWidth(width: number) {
+    return Math.min(520, Math.max(280, width))
+  }
+
+  function clampWorkspaceInspectorHeight(height: number) {
+    if (typeof window === 'undefined') {
+      return Math.min(860, Math.max(420, height))
+    }
+
+    return Math.min(Math.max(420, height), Math.max(420, window.innerHeight - 140))
+  }
+
+  async function handleToggleWorkspaceFullscreen() {
+    const element = workspaceShellRef.current
+
+    if (!element || typeof document === 'undefined') {
+      return
+    }
+
+    if (document.fullscreenElement === element) {
+      await document.exitFullscreen()
+      return
+    }
+
+    await element.requestFullscreen()
+  }
+
+  function handleWorkspaceInspectorResizeStart(event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setWorkspaceInspectorResizeState({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: workspaceInspectorWidth,
+      originHeight: workspaceInspectorHeight,
+    })
+  }
+
+  function handleWorkspaceInspectorResizeMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!workspaceInspectorResizeState || workspaceInspectorResizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+    const deltaX = event.clientX - workspaceInspectorResizeState.startX
+    const deltaY = event.clientY - workspaceInspectorResizeState.startY
+    setWorkspaceInspectorWidth(clampWorkspaceInspectorWidth(workspaceInspectorResizeState.originWidth + deltaX))
+    setWorkspaceInspectorHeight(clampWorkspaceInspectorHeight(workspaceInspectorResizeState.originHeight + deltaY))
+  }
+
+  function handleWorkspaceInspectorResizeEnd(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!workspaceInspectorResizeState || workspaceInspectorResizeState.pointerId !== event.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    setWorkspaceInspectorResizeState(null)
   }
 
   function updateLinkedEntityFromBlock(block: ProjectWorkspaceBlock, updates: Partial<ProjectWorkspaceBlock>, timestamp: string) {
@@ -1771,7 +2165,7 @@ export function ProjectDetailPage() {
     )
   }
 
-  function handleArrangeWorkspaceBlocks(positions: Array<{ id: string; x: number; y: number }>) {
+  function handleArrangeWorkspaceBlocks(positions: Array<{ id: string; x: number; y: number; width?: number; height?: number }>) {
     if (!project || positions.length === 0) {
       return
     }
@@ -1791,8 +2185,8 @@ export function ProjectDetailPage() {
           ...block,
           x: Math.max(24, nextPosition.x),
           y: Math.max(24, nextPosition.y),
-          width: 300,
-          height: 170,
+          width: nextPosition.width ?? block.width ?? (block.type === 'image' ? 320 : 300),
+          height: nextPosition.height ?? block.height ?? (block.type === 'image' ? 280 : 170),
           updatedAt: timestamp,
         }
       }),
@@ -2059,16 +2453,18 @@ export function ProjectDetailPage() {
   ]
 
   return (
-    <section className="space-y-6">
-      <ProjectHeader
-        project={project}
-        progress={completionRate}
-        onBack={() => navigate('/projects')}
-        onEdit={() => handleChangeTab('settings')}
-        onAddElement={() => setIsAddElementSheetOpen(true)}
-      />
+    <section ref={workspaceLayoutRef} className={cn(activeTab === 'workspace' ? 'flex flex-col gap-3 lg:flex-1 lg:grid lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-2 lg:overflow-hidden' : 'space-y-6')} style={activeTab === 'workspace' && !isWorkspaceFullscreen && workspaceAvailableHeight ? { height: workspaceAvailableHeight } : undefined}>
+      {activeTab !== 'workspace' ? (
+        <ProjectHeader
+          project={project}
+          progress={completionRate}
+          onBack={() => navigate('/projects')}
+          onEdit={() => handleChangeTab('settings')}
+          onAddElement={() => setIsAddElementSheetOpen(true)}
+        />
+      ) : null}
 
-      <ProjectTabs activeTab={activeTab} onChange={handleChangeTab} counts={projectTabCounts} />
+      <ProjectTabs activeTab={activeTab} onChange={handleChangeTab} counts={projectTabCounts} compact={activeTab === 'workspace'} className={activeTab === 'workspace' ? 'lg:shrink-0' : undefined} />
 
       {activeTab === 'overview' ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -2137,75 +2533,268 @@ export function ProjectDetailPage() {
       {activeTab === 'goals' ? <ProjectGoalsTab goals={projectGoalsForProject} tasks={linkedTasks} notes={linkedNotes} ideas={linkedIdeas} files={linkedFiles} workspaceBlocks={workspaceBlocks} tagSuggestions={projectTagSuggestions} onCreateGoal={handleCreateProjectGoal} onUpdateGoal={handleUpdateProjectGoal} onDeleteGoal={handleDeleteProjectGoal} onOpenWorkspaceBlock={handleOpenWorkspaceBlockFromTabs} /> : null}
 
       {activeTab === 'workspace' ? (
-        <div className={[
-          'grid items-start gap-6',
-          isWorkspaceInspectorVisible ? 'lg:grid-cols-[72px_minmax(0,1fr)_360px]' : 'lg:grid-cols-[72px_minmax(0,1fr)]',
-        ].join(' ')}>
-          <div className="hidden lg:block lg:w-18">
-            <ProjectToolbar activeTool={activeTool} onSelectTool={handleSelectTool} onCreateBlock={handleToolbarCreateBlock} />
-          </div>
-          <div className="min-w-0">
-            <ProjectWorkspace
-              project={project}
-              sections={projectSections}
-              workspaceBlocks={workspaceBlocks}
-              activeSectionFilter={workspaceSectionFilter}
-              selectedBlockId={selectedWorkspaceBlockId}
-              selectedRelationId={selectedRelationId}
-              activeTool={activeTool}
-              relationSourceBlockId={relationSourceBlockId}
-              relationNotice={relationNotice}
-              onSelectBlock={handleSelectWorkspaceBlock}
-              onSelectSectionFilter={setWorkspaceSectionFilter}
-              onCreateBlock={handleCreateWorkspaceBlock}
-              onOpenAddElement={() => setIsAddElementSheetOpen(true)}
-              onUpdateBlock={handleUpdateWorkspaceBlock}
-              onArrangeBlocks={handleArrangeWorkspaceBlocks}
-              workspaceRelations={workspaceRelationsForProject}
-            />
-          </div>
-          {isWorkspaceInspectorVisible ? (
-            <div className="min-w-0 lg:w-90">
-              <ProjectInspector
-                project={project}
-                selectedBlock={selectedWorkspaceBlock}
-                sections={projectSections}
-                onUpdateBlock={handleUpdateWorkspaceBlock}
-                onDeleteBlock={handleDeleteWorkspaceBlock}
-                onClose={() => {
-                  setSelectedWorkspaceBlockId(null)
-                  setIsWorkspaceInspectorVisible(false)
-                }}
-                relatedTasks={linkedTasks}
-                relatedNotes={linkedNotes}
-                relatedIdeas={linkedIdeas}
-                relatedFiles={linkedFiles}
-                linkedEntity={linkedEntityByBlock}
-                selectedAttachment={selectedAttachment}
-                blockRelations={selectedBlockRelations}
-                onCreateBlock={handleCreateWorkspaceBlock}
-                onDeleteRelation={handleDeleteRelation}
-                onCreateRelation={handleStartRelationFromBlock}
-                onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
-                onEditAttachment={(attachmentId) => {
-                  const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
-
-                  if (attachment) {
-                    openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
-                  }
-                }}
-                onDeleteAttachment={handleDeleteAttachment}
-                onOpenAttachment={handleOpenAttachment}
+        <div
+          ref={workspaceShellRef}
+          className={cn('relative', isWorkspaceFullscreen ? 'min-h-screen overflow-auto bg-(--bg) p-4 md:p-6' : 'min-h-0 lg:h-full lg:overflow-hidden')}
+        >
+          {isWorkspaceFullscreen ? (
+            <div className="pointer-events-none fixed left-6 top-6 z-50 hidden lg:flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setIsWorkspaceToolbarVisible((current) => !current)}
+                aria-label={isWorkspaceToolbarVisible ? 'Свернуть панель инструментов' : 'Показать панель инструментов'}
+                className={cn(
+                  'pointer-events-auto inline-flex h-13 w-13 items-center justify-center rounded-2xl border bg-(--panel) shadow-(--shadow-floating) transition hover:-translate-y-0.5',
+                  isWorkspaceToolbarVisible
+                    ? 'border-(--accent-border) text-(--accent)'
+                    : 'border-(--border) text-(--text-secondary)',
+                )}
+              >
+                <SlidersHorizontal size={20} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsWorkspaceInspectorVisible((current) => !current)}
+                aria-label={isWorkspaceInspectorVisible ? 'Свернуть инспектор' : 'Показать инспектор'}
+                className={cn(
+                  'pointer-events-auto inline-flex h-13 w-13 items-center justify-center rounded-2xl border bg-(--panel) shadow-(--shadow-floating) transition hover:-translate-y-0.5',
+                  isWorkspaceInspectorVisible
+                    ? 'border-(--accent-border) text-(--accent)'
+                    : 'border-(--border) text-(--text-secondary)',
+                )}
+              >
+                <PencilLine size={20} strokeWidth={2} />
+              </button>
+            </div>
+          ) : null}
+          {isWorkspaceFullscreen && isWorkspaceToolbarVisible ? (
+            <div className="pointer-events-none fixed left-7 top-38 z-50 hidden lg:block">
+              <ProjectToolbar
+                activeTool={activeTool}
+                onSelectTool={handleSelectTool}
+                onCreateBlock={handleToolbarCreateBlock}
+                className="pointer-events-auto"
               />
             </div>
           ) : null}
-          <ProjectMobileToolbar
-            onAdd={() => setIsAddElementSheetOpen(true)}
-            onCreateText={() => handleToolbarCreateBlock('text')}
-            onCreateTask={() => handleToolbarCreateBlock('task')}
-            onCreateIdea={() => handleToolbarCreateBlock('idea')}
-            onMore={() => setIsAddElementSheetOpen(true)}
-          />
+          <div
+            className={cn(
+              'grid h-full min-h-0 gap-4 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden',
+              isWorkspaceFullscreen
+                ? 'grid-cols-1 pt-20'
+                : isWorkspaceInspectorVisible
+                  ? 'lg:grid-cols-[84px_minmax(0,1fr)_360px]'
+                  : 'lg:grid-cols-[84px_minmax(0,1fr)]',
+            )}
+          >
+            <div className={cn('lg:w-21 lg:min-h-0', isWorkspaceFullscreen ? 'hidden' : 'hidden lg:flex lg:h-full lg:items-center lg:justify-center lg:overflow-hidden')}>
+              <ProjectToolbar activeTool={activeTool} onSelectTool={handleSelectTool} onCreateBlock={handleToolbarCreateBlock} />
+            </div>
+            <div className="min-h-0 min-w-0 lg:h-full lg:overflow-hidden">
+              <ProjectWorkspace
+                project={project}
+                sections={projectSections}
+                workspaceBlocks={workspaceBlocks}
+                activeSectionFilter={workspaceSectionFilter}
+                selectedBlockId={selectedWorkspaceBlockId}
+                selectedRelationId={selectedRelationId}
+                activeTool={activeTool}
+                relationSourceBlockId={relationSourceBlockId}
+                relationNotice={relationNotice}
+                onSelectBlock={handleSelectWorkspaceBlock}
+                onEditBlock={handleEditWorkspaceBlock}
+                onSelectSectionFilter={setWorkspaceSectionFilter}
+                onCreateBlock={handleCreateWorkspaceBlock}
+                onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+                onUpdateBlock={handleUpdateWorkspaceBlock}
+                onArrangeBlocks={handleArrangeWorkspaceBlocks}
+                onInteractionChange={setIsWorkspaceCanvasInteracting}
+                workspaceRelations={workspaceRelationsForProject}
+                editorMode
+                resetViewSignal={workspaceResetViewSignal}
+                arrangeSignal={workspaceArrangeSignal}
+                onCanvasViewChange={setWorkspaceCanvasView}
+                isFullscreen={isWorkspaceFullscreen}
+                onToggleFullscreen={() => {
+                  void handleToggleWorkspaceFullscreen()
+                }}
+              />
+            </div>
+            {isWorkspaceInspectorVisible && !isWorkspaceFullscreen ? (
+              <div className="hidden min-h-0 min-w-0 lg:block lg:h-full lg:overflow-hidden">
+                <ProjectInspector
+                  project={project}
+                  selectedBlock={selectedWorkspaceBlock}
+                  sections={projectSections}
+                  onUpdateBlock={handleUpdateWorkspaceBlock}
+                  onDeleteBlock={handleDeleteWorkspaceBlock}
+                  onClose={() => {
+                    setIsWorkspaceInspectorVisible(false)
+                  }}
+                  relatedTasks={linkedTasks}
+                  relatedNotes={linkedNotes}
+                  relatedIdeas={linkedIdeas}
+                  relatedFiles={linkedFiles}
+                  linkedEntity={linkedEntityByBlock}
+                  selectedAttachment={selectedAttachment}
+                  blockRelations={selectedBlockRelations}
+                  onCreateBlock={handleCreateWorkspaceBlock}
+                  onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+                  onDeleteRelation={handleDeleteRelation}
+                  onCreateRelation={handleStartRelationFromBlock}
+                  onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
+                  onEditAttachment={(attachmentId) => {
+                    const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+                    if (attachment) {
+                      openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+                    }
+                  }}
+                  onDeleteAttachment={handleDeleteAttachment}
+                  onOpenAttachment={handleOpenAttachment}
+                  workspaceBlockCount={workspaceBlocks.length}
+                  activeToolLabel={activeTool === 'select' ? 'Выбор' : activeTool === 'pan' ? 'Рука' : activeTool}
+                  selectedSectionFilter={workspaceSectionFilter}
+                  zoomPercent={Math.round(workspaceCanvasView.zoom * 100)}
+                  onArrangeBlocks={() => setWorkspaceArrangeSignal((current) => current + 1)}
+                  onResetView={() => setWorkspaceResetViewSignal((current) => current + 1)}
+                  onOpenProjectSettings={() => handleChangeTab('settings')}
+                  onSelectSectionFilter={setWorkspaceSectionFilter}
+                  className="h-full"
+                  contentClassName="h-full"
+                />
+              </div>
+            ) : null}
+            {isWorkspaceInspectorVisible ? (
+              <div className="min-w-0 lg:hidden">
+                <ProjectInspector
+                  project={project}
+                  selectedBlock={selectedWorkspaceBlock}
+                  sections={projectSections}
+                  onUpdateBlock={handleUpdateWorkspaceBlock}
+                  onDeleteBlock={handleDeleteWorkspaceBlock}
+                  onClose={() => {
+                    setIsWorkspaceInspectorVisible(false)
+                  }}
+                  relatedTasks={linkedTasks}
+                  relatedNotes={linkedNotes}
+                  relatedIdeas={linkedIdeas}
+                  relatedFiles={linkedFiles}
+                  linkedEntity={linkedEntityByBlock}
+                  selectedAttachment={selectedAttachment}
+                  blockRelations={selectedBlockRelations}
+                  onCreateBlock={handleCreateWorkspaceBlock}
+                  onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+                  onDeleteRelation={handleDeleteRelation}
+                  onCreateRelation={handleStartRelationFromBlock}
+                  onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
+                  onEditAttachment={(attachmentId) => {
+                    const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+                    if (attachment) {
+                      openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+                    }
+                  }}
+                  onDeleteAttachment={handleDeleteAttachment}
+                  onOpenAttachment={handleOpenAttachment}
+                  workspaceBlockCount={workspaceBlocks.length}
+                  activeToolLabel={activeTool === 'select' ? 'Выбор' : activeTool === 'pan' ? 'Рука' : activeTool}
+                  selectedSectionFilter={workspaceSectionFilter}
+                  zoomPercent={Math.round(workspaceCanvasView.zoom * 100)}
+                  onArrangeBlocks={() => setWorkspaceArrangeSignal((current) => current + 1)}
+                  onResetView={() => setWorkspaceResetViewSignal((current) => current + 1)}
+                  onOpenProjectSettings={() => handleChangeTab('settings')}
+                  onSelectSectionFilter={setWorkspaceSectionFilter}
+                />
+              </div>
+            ) : null}
+            <ProjectMobileToolbar
+              onAdd={() => setIsAddElementSheetOpen(true)}
+              onCreateText={() => handleToolbarCreateBlock('text')}
+              onCreateTask={() => handleToolbarCreateBlock('task')}
+              onCreateIdea={() => handleToolbarCreateBlock('idea')}
+              onMore={() => setIsAddElementSheetOpen(true)}
+            />
+          </div>
+          {isWorkspaceInspectorVisible && isWorkspaceFullscreen ? (
+            <div
+              className="pointer-events-none fixed z-40 hidden lg:block"
+              style={{
+                left: workspaceInspectorPosition.x,
+                top: workspaceInspectorPosition.y,
+              }}
+            >
+              <div
+                className={cn(
+                  isWorkspaceCanvasInteracting ? 'pointer-events-none max-w-[calc(100vw-6rem)]' : 'pointer-events-auto max-w-[calc(100vw-6rem)]',
+                  workspaceInspectorDragState ? 'cursor-grabbing' : 'cursor-grab',
+                )}
+                style={{ width: workspaceInspectorWidth, height: workspaceInspectorHeight }}
+                onPointerDown={handleWorkspaceInspectorDragStart}
+                onPointerMove={handleWorkspaceInspectorDragMove}
+                onPointerUp={handleWorkspaceInspectorDragEnd}
+                onPointerCancel={handleWorkspaceInspectorDragEnd}
+              >
+                <div className="relative h-full">
+                  <ProjectInspector
+                    project={project}
+                    selectedBlock={selectedWorkspaceBlock}
+                    sections={projectSections}
+                    onUpdateBlock={handleUpdateWorkspaceBlock}
+                    onDeleteBlock={handleDeleteWorkspaceBlock}
+                    onClose={() => {
+                      setIsWorkspaceInspectorVisible(false)
+                    }}
+                    relatedTasks={linkedTasks}
+                    relatedNotes={linkedNotes}
+                    relatedIdeas={linkedIdeas}
+                    relatedFiles={linkedFiles}
+                    linkedEntity={linkedEntityByBlock}
+                    selectedAttachment={selectedAttachment}
+                    blockRelations={selectedBlockRelations}
+                    onCreateBlock={handleCreateWorkspaceBlock}
+                    onOpenAddElement={() => setIsAddElementSheetOpen(true)}
+                    onDeleteRelation={handleDeleteRelation}
+                    onCreateRelation={handleStartRelationFromBlock}
+                    onOpenRelatedBlock={handleOpenWorkspaceBlockFromTabs}
+                    onEditAttachment={(attachmentId) => {
+                      const attachment = projectAttachmentsForProject.find((item) => item.id === attachmentId)
+
+                      if (attachment) {
+                        openAttachmentUploader(resolveAttachmentMode(attachment), attachment.id)
+                      }
+                    }}
+                    onDeleteAttachment={handleDeleteAttachment}
+                    onOpenAttachment={handleOpenAttachment}
+                    workspaceBlockCount={workspaceBlocks.length}
+                    activeToolLabel={activeTool === 'select' ? 'Выбор' : activeTool === 'pan' ? 'Рука' : activeTool}
+                    selectedSectionFilter={workspaceSectionFilter}
+                    zoomPercent={Math.round(workspaceCanvasView.zoom * 100)}
+                    onArrangeBlocks={() => setWorkspaceArrangeSignal((current) => current + 1)}
+                    onResetView={() => setWorkspaceResetViewSignal((current) => current + 1)}
+                    onOpenProjectSettings={() => handleChangeTab('settings')}
+                    onSelectSectionFilter={setWorkspaceSectionFilter}
+                    className="h-full max-h-none"
+                    contentClassName="lg:max-h-none"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Изменить размер инспектора"
+                    onPointerDown={handleWorkspaceInspectorResizeStart}
+                    onPointerMove={handleWorkspaceInspectorResizeMove}
+                    onPointerUp={handleWorkspaceInspectorResizeEnd}
+                    onPointerCancel={handleWorkspaceInspectorResizeEnd}
+                    className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-xl border border-(--border-soft) bg-(--panel) text-(--text-muted) shadow-(--shadow-soft) touch-none cursor-nwse-resize"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M5 11L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      <path d="M8.5 11H11V8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -2232,6 +2821,10 @@ export function ProjectDetailPage() {
       <ProjectAddElementSheet
         isOpen={isAddElementSheetOpen}
         onClose={() => setIsAddElementSheetOpen(false)}
+        onCreateTemplate={(preset) => {
+          setIsAddElementSheetOpen(false)
+          handleCreateWorkspaceTemplate(preset)
+        }}
         onCreateElement={(type) => {
           setIsAddElementSheetOpen(false)
 

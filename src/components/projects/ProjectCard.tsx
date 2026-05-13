@@ -1,3 +1,4 @@
+import { MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '../../types'
 import { projectPriorityLabels, projectStatusLabels } from './projectMeta'
@@ -29,28 +30,35 @@ function formatDeadline(value: string | null) {
 
 export function ProjectCard({ project, counts, completionRate, onEdit, onDelete }: ProjectCardProps) {
   return (
-    <article className="ui-panel ui-card-hover group p-5 md:p-6">
+    <article className="ui-panel ui-card-hover group p-5">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-(--text-muted)">{projectStatusLabels[project.status]}</p>
-          <Link to={`/projects/${project.id}`} className="mt-2 block text-2xl font-semibold text-(--text-primary) transition-colors duration-200 hover:text-(--accent)">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap gap-2 text-xs text-(--text-secondary)">
+            <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">{projectStatusLabels[project.status]}</span>
+            <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">Приоритет: {projectPriorityLabels[project.priority ?? 'medium']}</span>
+            {project.deadline ? <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-2.5 py-1">{formatDeadline(project.deadline)}</span> : null}
+          </div>
+          <Link to={`/projects/${project.id}`} className="mt-3 block truncate text-xl font-semibold text-(--text-primary) transition-colors duration-200 hover:text-(--accent)">
             {project.title}
           </Link>
+          <p className="mt-2 line-clamp-2 text-sm text-(--text-muted)">{project.description || 'Описание проекта пока не заполнено.'}</p>
         </div>
+        <details className="relative shrink-0">
+          <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-2xl border border-(--border) bg-(--panel-elevated) text-(--text-muted) transition hover:border-(--accent-border) hover:text-(--accent)">
+            <MoreHorizontal size={18} strokeWidth={2} />
+          </summary>
+          <div className="absolute right-0 top-12 z-10 min-w-40 rounded-2xl border border-(--border) bg-(--panel) p-2 shadow-(--shadow-floating)">
+            <button type="button" onClick={() => onEdit(project)} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-(--text-secondary) transition hover:bg-(--panel-elevated) hover:text-(--text-primary)">
+              Редактировать
+            </button>
+            <button type="button" onClick={() => onDelete(project)} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-(--danger-text) transition hover:bg-(--danger-bg)">
+              Удалить
+            </button>
+          </div>
+        </details>
       </div>
 
-      <p className="mt-4 line-clamp-3 min-h-18 text-sm text-(--text-muted) md:text-base">{project.description || 'Описание проекта пока не заполнено.'}</p>
-
-      <div className="mt-4 rounded-3xl border border-(--border) bg-(--panel-elevated) p-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Рабочая область проекта</p>
-        <p className="mt-2 text-sm text-(--text-secondary)">Задачи · Заметки · Идеи · Файлы · Связи</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="ui-chip">{projectStatusLabels[project.status]}</span>
-          <span className="ui-chip">Приоритет: {projectPriorityLabels[project.priority ?? 'medium']}</span>
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-3xl border border-(--border-soft) bg-(--panel-elevated) p-4">
+      <div className="mt-4 rounded-2xl border border-(--border-soft) bg-(--panel-elevated) p-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Прогресс</p>
           <p className="text-sm font-medium text-(--text-primary)">{completionRate}%</p>
@@ -60,18 +68,7 @@ export function ProjectCard({ project, counts, completionRate, onEdit, onDelete 
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="ui-panel-elevated p-4">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Цель</p>
-          <p className="mt-2 text-sm text-(--text-primary)">{project.goal || 'Цель не задана'}</p>
-        </div>
-        <div className="ui-panel-elevated p-4">
-          <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Дедлайн</p>
-          <p className="mt-2 text-sm text-(--text-primary)">{formatDeadline(project.deadline)}</p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="ui-panel-elevated px-3 py-3">
           <p className="text-xs uppercase tracking-[0.16em] text-(--text-muted)">Задачи</p>
           <p className="mt-2 text-lg font-semibold text-(--text-primary)">{counts.tasks}</p>
@@ -90,24 +87,11 @@ export function ProjectCard({ project, counts, completionRate, onEdit, onDelete 
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Link to={`/projects/${project.id}`} className="ui-button-accent px-4 py-3 text-sm">
-          Открыть рабочую область
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Link to={`/projects/${project.id}`} className="ui-button-accent px-4 py-2.5 text-sm">
+          Открыть
         </Link>
-        <button
-          type="button"
-          onClick={() => onEdit(project)}
-          className="ui-button px-4 py-3 text-sm"
-        >
-          Редактировать
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(project)}
-          className="ui-button-danger px-4 py-3 text-sm"
-        >
-          Удалить
-        </button>
+        {project.goal ? <p className="min-w-0 text-sm text-(--text-secondary)">Цель: <span className="text-(--text-primary)">{project.goal}</span></p> : null}
       </div>
     </article>
   )

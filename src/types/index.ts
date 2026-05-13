@@ -342,6 +342,14 @@ export type ProjectWorkspaceBlockType =
   | 'comment'
   | 'drawing'
 
+export type ProjectWorkspaceVisualVariant =
+  | 'template-header'
+  | 'template-node'
+  | 'template-panel'
+  | 'template-step'
+
+export type ProjectWorkspaceTemplatePreset = 'hierarchy' | 'comparison' | 'roadmap'
+
 export type ProjectWorkspaceBlock = {
   id: EntityId
   projectId: EntityId
@@ -350,6 +358,7 @@ export type ProjectWorkspaceBlock = {
   content?: string
   description?: string
   sectionId?: EntityId | null
+  visualVariant?: ProjectWorkspaceVisualVariant
   x?: number
   y?: number
   width?: number
@@ -372,6 +381,7 @@ export type ProjectWorkspaceBlock = {
 }
 
 export type ProjectWorkspaceRelationType =
+  | 'hierarchy'
   | 'related'
   | 'depends_on'
   | 'supports'

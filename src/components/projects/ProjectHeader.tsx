@@ -5,6 +5,7 @@ import { projectPriorityLabels, projectStatusLabels } from './projectMeta'
 interface ProjectHeaderProps {
   project: Project
   progress: number
+  compact?: boolean
   onBack?: () => void
   onEdit?: () => void
   onAddElement?: () => void
@@ -18,7 +19,42 @@ function formatDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium' }).format(new Date(value))
 }
 
-export function ProjectHeader({ project, progress, onBack, onEdit, onAddElement }: ProjectHeaderProps) {
+export function ProjectHeader({ project, progress, compact = false, onBack, onEdit, onAddElement }: ProjectHeaderProps) {
+  if (compact) {
+    return (
+      <header className="ui-panel flex w-full flex-col gap-3 p-3 md:p-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-(--text-muted)">
+          <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-3 py-1 font-medium text-(--text-secondary)">
+            {projectStatusLabels[project.status]}
+          </span>
+          <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-3 py-1 font-medium text-(--text-secondary)">
+            {projectPriorityLabels[project.priority ?? 'medium']}
+          </span>
+          <span className="rounded-full border border-(--border-soft) bg-(--panel-elevated) px-3 py-1 font-medium text-(--text-secondary)">
+            {formatDate(project.deadline)}
+          </span>
+          <span className="rounded-full border border-(--accent-border) bg-(--accent-soft) px-3 py-1 font-medium text-(--accent)">
+            Прогресс {progress}%
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-semibold text-(--text-primary) md:text-2xl">{project.title}</h1>
+            {project.goal || project.description ? (
+              <p className="mt-1 line-clamp-1 text-sm text-(--text-secondary)">{project.goal || project.description}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            {onBack ? <button type="button" className="ui-button px-3 py-2 text-sm" onClick={onBack}>Назад</button> : null}
+            {onEdit ? <button type="button" className="ui-button px-3 py-2 text-sm" onClick={onEdit}>Настройки</button> : null}
+            {onAddElement ? <button type="button" className="ui-button-accent px-3 py-2 text-sm" onClick={onAddElement}>Добавить элемент</button> : null}
+          </div>
+        </div>
+      </header>
+    )
+  }
+
   return (
     <header className={cn('ui-panel flex w-full flex-col gap-5 p-4 md:gap-6 md:p-6')}>
       <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">

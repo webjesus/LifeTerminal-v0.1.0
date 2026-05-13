@@ -89,35 +89,36 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-(--overlay) px-0 py-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-8">
-      <div className="max-h-[94dvh] w-full max-w-full overflow-hidden rounded-t-[28px] border border-(--border) bg-(--panel) shadow-[var(--shadow-soft)] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.18em] ${badge.className}`}>
-                {badge.shortLabel}
-              </span>
-              <span className="rounded-full border border-(--border) bg-(--panel-elevated) px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-(--text-muted)">
-                {workspaceItemKindLabels[block.kind as WorkspaceItemKind]}
-              </span>
+      <div className="w-full max-w-full rounded-t-[28px] ui-shadow-floating sm:max-w-5xl sm:rounded-3xl">
+        <div className="ui-surface-floating max-h-[94dvh] overflow-hidden rounded-t-[28px] border sm:max-h-[92vh] sm:rounded-3xl">
+          <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.18em] ${badge.className}`}>
+                  {badge.shortLabel}
+                </span>
+                <span className="rounded-full border border-(--border) bg-(--panel-elevated) px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-(--text-muted)">
+                  {workspaceItemKindLabels[block.kind as WorkspaceItemKind]}
+                </span>
+              </div>
+              <h2 className="mt-3 text-2xl font-semibold text-(--text-primary)">{block.title}</h2>
+              <p className="mt-2 text-sm text-(--text-muted)">
+                Создан: {formatDateTime(block.createdAt)}
+                {' · '}
+                Обновлён: {formatDateTime(block.updatedAt)}
+              </p>
             </div>
-            <h2 className="mt-3 text-2xl font-semibold text-(--text-primary)">{block.title}</h2>
-            <p className="mt-2 text-sm text-(--text-muted)">
-              Создан: {formatDateTime(block.createdAt)}
-              {' · '}
-              Обновлён: {formatDateTime(block.updatedAt)}
-            </p>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-secondary) transition-colors duration-200 hover:text-(--text-primary)"
+            >
+              Закрыть
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-secondary) transition-colors duration-200 hover:text-(--text-primary)"
-          >
-            Закрыть
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="grid max-h-[calc(94dvh-92px)] gap-0 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_320px] sm:max-h-[calc(92vh-92px)]">
+          <form onSubmit={handleSubmit} className="grid max-h-[calc(94dvh-92px)] gap-0 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_320px] sm:max-h-[calc(92vh-92px)]">
           <div className="space-y-5 px-6 py-6">
             <label className="space-y-2">
               <span className="text-sm text-(--text-secondary)">Название</span>
@@ -282,7 +283,8 @@ export function ProjectBlockModal({ block, sections, availableBlocks, relatedIte
               </div>
             </div>
           </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   )

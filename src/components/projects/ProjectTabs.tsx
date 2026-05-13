@@ -1,8 +1,12 @@
+import { cn } from '../../utils/cn'
+
 export type ProjectTab = 'overview' | 'workspace' | 'goals' | 'tasks' | 'notes' | 'ideas' | 'files' | 'relations' | 'activity' | 'settings'
 
 type ProjectTabsProps = {
   activeTab: ProjectTab
   onChange: (tab: ProjectTab) => void
+  compact?: boolean
+  className?: string
   counts?: {
     tasks?: number
     goals?: number
@@ -28,9 +32,9 @@ const TABS: Array<{ key: ProjectTab; label: string; countKey?: keyof NonNullable
   { key: 'settings', label: 'Настройки' },
 ]
 
-export function ProjectTabs({ activeTab, onChange, counts }: ProjectTabsProps) {
+export function ProjectTabs({ activeTab, onChange, counts, compact = false, className }: ProjectTabsProps) {
   return (
-    <section className="ui-panel p-4 md:p-5">
+    <section className={cn('ui-panel shrink-0 overflow-hidden', compact ? 'p-3 md:p-3.5' : 'p-4 md:p-5', className)}>
       <div className="ui-filter-scroll">
         {TABS.map((tab) => (
           <button
@@ -39,6 +43,7 @@ export function ProjectTabs({ activeTab, onChange, counts }: ProjectTabsProps) {
             onClick={() => onChange(tab.key)}
             className={[
               'ui-filter-pill',
+              compact ? 'px-3 py-2 text-sm' : '',
               activeTab === tab.key
                 ? 'border-(--accent-border) bg-(--accent-soft) text-(--accent)'
                 : 'border-(--border) bg-(--panel) text-(--text-secondary) hover:border-(--accent-border) hover:text-(--text-primary)',

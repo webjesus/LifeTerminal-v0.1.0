@@ -20,7 +20,7 @@ function ToggleRow({ title, description, checked, onChange }: { title: string; d
         ].join(' ')}
       >
         <span className={[
-          'inline-flex h-6 w-6 rounded-full bg-(--input-bg) shadow-[0_2px_8px_rgba(11,16,32,0.12)] transition-transform duration-200',
+          'inline-flex h-6 w-6 rounded-full bg-(--input-bg) shadow-(--shadow-soft) transition-transform duration-200',
           checked ? 'translate-x-[1.4rem]' : 'translate-x-1',
         ].join(' ')} />
       </button>
